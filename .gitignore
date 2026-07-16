@@ -1,0 +1,15 @@
+.DS_Store
+.env
+.env.local
+.env.*.local
+.venv/
+node_modules/
+dist/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+*.egg-info/
+*.tsbuildinfo
+.vercel/
+terraform.tfstate*
+*.tfplan
