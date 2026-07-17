@@ -1,6 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { SendHorizonal } from "lucide-react";
+import { Play, SendHorizonal } from "lucide-react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import type { Mesh } from "three";
 import { create } from "zustand";
@@ -16,6 +16,34 @@ type PlattState =
   | "celebrating"
   | "concerned";
 
+type ConnectionState = "connecting" | "connected" | "disconnected";
+
+type BackendEvent =
+  | {
+      id: string;
+      type: "agent_state";
+      job_id: string;
+      state: PlattState;
+      label: string;
+      created_at: string;
+    }
+  | {
+      id: string;
+      type: "chat_delta";
+      job_id: string;
+      delta: string;
+      index: number;
+      done: boolean;
+      created_at: string;
+    }
+  | {
+      id: string;
+      type: "job_created";
+      job_id: string;
+      prompt: string;
+      created_at: string;
+    };
+
 type EventEntry = {
   id: string;
   label: string;
@@ -27,15 +55,23 @@ type ChatMessage = {
   id: string;
   author: "operator" | "platt";
   text: string;
+  jobId?: string;
+  streaming?: boolean;
 };
 
 type EventStore = {
   state: PlattState;
+  connection: ConnectionState;
   events: EventEntry[];
   messages: ChatMessage[];
-  setState: (state: PlattState, label: string) => void;
-  sendMessage: (text: string) => void;
+  setConnection: (connection: ConnectionState) => void;
+  applyBackendEvent: (event: BackendEvent) => void;
+  addOperatorMessage: (text: string) => void;
+  addLocalEvent: (state: PlattState, label: string) => void;
 };
+
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+const wsUrl = import.meta.env.VITE_WS_URL ?? "ws://127.0.0.1:8000/ws";
 
 const stateLabels: Record<PlattState, string> = {
   idle: "Idle",
@@ -48,26 +84,17 @@ const stateLabels: Record<PlattState, string> = {
   concerned: "Concerned",
 };
 
-const fakeCycle: Array<{ state: PlattState; label: string }> = [
-  { state: "listening", label: "Chat input focused" },
-  { state: "thinking", label: "Planning response" },
-  { state: "working", label: "Tool execution in flight" },
-  { state: "talking", label: "Streaming response" },
-  { state: "awaiting_approval", label: "Plan approval required" },
-  { state: "celebrating", label: "Apply succeeded" },
-  { state: "concerned", label: "Pipeline error detected" },
-  { state: "idle", label: "Returned to idle" },
-];
-
 const createId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+const formatTime = (value?: string) => (value ? new Date(value).toLocaleTimeString() : new Date().toLocaleTimeString());
 
 const useEventStore = create<EventStore>((set) => ({
   state: "idle",
+  connection: "connecting",
   events: [
     {
       id: createId(),
       label: "Phase 1 shell mounted",
-      timestamp: new Date().toLocaleTimeString(),
+      timestamp: formatTime(),
       state: "idle",
     },
   ],
@@ -75,48 +102,150 @@ const useEventStore = create<EventStore>((set) => ({
     {
       id: createId(),
       author: "platt",
-      text: "Phase 1 interface ready. Live agent integration is not connected yet.",
+      text: "Phase 1 interface ready. Connect the backend to stream live events.",
     },
   ],
-  setState: (state, label) =>
+  setConnection: (connection) =>
     set((current) => ({
-      state,
-      events: [
-        { id: createId(), label, timestamp: new Date().toLocaleTimeString(), state },
-        ...current.events,
-      ].slice(0, 8),
-    })),
-  sendMessage: (text) =>
-    set((current) => ({
-      state: "thinking",
-      messages: [
-        ...current.messages,
-        { id: createId(), author: "operator", text },
-        { id: createId(), author: "platt", text: "Acknowledged in fake cycle mode." },
-      ],
+      connection,
       events: [
         {
           id: createId(),
-          label: "Operator message captured",
-          timestamp: new Date().toLocaleTimeString(),
-          state: "thinking" as PlattState,
+          label: connection === "connected" ? "WebSocket connected" : `WebSocket ${connection}`,
+          timestamp: formatTime(),
+          state: current.state,
         },
         ...current.events,
-      ].slice(0, 8),
+      ].slice(0, 10),
     })),
+  addOperatorMessage: (text) =>
+    set((current) => ({
+      state: "listening",
+      messages: [...current.messages, { id: createId(), author: "operator", text }],
+      events: [
+        {
+          id: createId(),
+          label: "Operator message sent",
+          timestamp: formatTime(),
+          state: "listening" as PlattState,
+        },
+        ...current.events,
+      ].slice(0, 10),
+    })),
+  addLocalEvent: (state, label) =>
+    set((current) => ({
+      state,
+      events: [{ id: createId(), label, timestamp: formatTime(), state }, ...current.events].slice(0, 10),
+    })),
+  applyBackendEvent: (event) =>
+    set((current) => {
+      if (event.type === "agent_state") {
+        return {
+          state: event.state,
+          events: [
+            {
+              id: event.id,
+              label: event.label,
+              timestamp: formatTime(event.created_at),
+              state: event.state,
+            },
+            ...current.events,
+          ].slice(0, 10),
+        };
+      }
+
+      if (event.type === "job_created") {
+        return {
+          events: [
+            {
+              id: event.id,
+              label: "Job accepted by backend",
+              timestamp: formatTime(event.created_at),
+              state: current.state,
+            },
+            ...current.events,
+          ].slice(0, 10),
+        };
+      }
+
+      const existingMessage = current.messages.find((message) => message.jobId === event.job_id);
+      const nextMessages = existingMessage
+        ? current.messages.map((message) =>
+            message.jobId === event.job_id
+              ? {
+                  ...message,
+                  text: `${message.text}${event.delta}`,
+                  streaming: !event.done,
+                }
+              : message,
+          )
+        : [
+            ...current.messages,
+            {
+              id: event.id,
+              author: "platt" as const,
+              text: event.delta,
+              jobId: event.job_id,
+              streaming: !event.done,
+            },
+          ];
+
+      return { messages: nextMessages };
+    }),
 }));
 
-function useFakeStateCycle() {
+function useBackendEvents() {
   React.useEffect(() => {
-    let index = 0;
-    const interval = window.setInterval(() => {
-      const next = fakeCycle[index % fakeCycle.length];
-      useEventStore.getState().setState(next.state, next.label);
-      index += 1;
-    }, 2600);
+    let closed = false;
+    let socket: WebSocket | null = null;
+    let retryTimer: number | undefined;
 
-    return () => window.clearInterval(interval);
+    const connect = () => {
+      useEventStore.getState().setConnection("connecting");
+      socket = new WebSocket(wsUrl);
+
+      socket.addEventListener("open", () => {
+        useEventStore.getState().setConnection("connected");
+      });
+
+      socket.addEventListener("message", (message) => {
+        const event = JSON.parse(message.data) as BackendEvent;
+        useEventStore.getState().applyBackendEvent(event);
+      });
+
+      socket.addEventListener("close", () => {
+        if (closed) return;
+        useEventStore.getState().setConnection("disconnected");
+        retryTimer = window.setTimeout(connect, 2500);
+      });
+
+      socket.addEventListener("error", () => {
+        socket?.close();
+      });
+    };
+
+    connect();
+
+    return () => {
+      closed = true;
+      window.clearTimeout(retryTimer);
+      socket?.close();
+    };
   }, []);
+}
+
+async function postJson(path: string, body?: unknown) {
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Request failed: ${response.status}`);
+  }
+
+  return response.json();
 }
 
 function PlattCapsule() {
@@ -155,11 +284,13 @@ function PlattCapsule() {
 
 function Stage() {
   const state = useEventStore((store) => store.state);
+  const connection = useEventStore((store) => store.connection);
 
   return (
     <section className="stage" aria-label="Platt avatar stage">
       <div className="stageHeader">
         <StatusChip state={state} />
+        <span className={`connectionBadge ${connection}`}>{connection}</span>
       </div>
       <Canvas camera={{ position: [0, 0.4, 5], fov: 42 }} dpr={[1, 1.5]} shadows>
         <color attach="background" args={["#10131a"]} />
@@ -170,7 +301,7 @@ function Stage() {
       </Canvas>
       <div className="stageFooter">
         <span>Platt capsule placeholder</span>
-        <span>R3F scene</span>
+        <span>Backend event contract</span>
       </div>
     </section>
   );
@@ -188,29 +319,57 @@ function StatusChip({ state }: { state: PlattState }) {
 function ChatPanel() {
   const messages = useEventStore((store) => store.messages);
   const events = useEventStore((store) => store.events);
-  const sendMessage = useEventStore((store) => store.sendMessage);
+  const addOperatorMessage = useEventStore((store) => store.addOperatorMessage);
+  const addLocalEvent = useEventStore((store) => store.addLocalEvent);
   const [draft, setDraft] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
 
-  const onSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const text = draft.trim();
-    if (!text) return;
-    sendMessage(text);
+    if (!text || busy) return;
+
+    setBusy(true);
+    addOperatorMessage(text);
     setDraft("");
+
+    try {
+      await postJson("/chat", { prompt: text });
+    } catch {
+      addLocalEvent("concerned", "Backend chat request failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runStateCycle = async () => {
+    try {
+      await postJson("/dev/state-cycle");
+    } catch {
+      addLocalEvent("concerned", "Backend state cycle request failed");
+    }
   };
 
   return (
     <aside className="chatPanel" aria-label="Chat and event timeline">
       <div className="panelSection messages">
         <header>
-          <h1>Platt</h1>
-          <p>Phase 1 shell</p>
+          <div>
+            <h1>Platt</h1>
+            <p>Phase 1 event contract</p>
+          </div>
+          <button className="cycleButton" type="button" onClick={runStateCycle} title="Run backend state cycle">
+            <Play size={16} aria-hidden="true" />
+          </button>
         </header>
         <div className="messageList">
           {messages.map((message) => (
             <div className={`message ${message.author}`} key={message.id}>
               <span>{message.author === "platt" ? "Platt" : "Operator"}</span>
-              <p>{message.text}</p>
+              <p>
+                {message.text}
+                {message.streaming ? <b className="cursor">|</b> : null}
+              </p>
             </div>
           ))}
         </div>
@@ -235,10 +394,11 @@ function ChatPanel() {
           <input
             id="chat-input"
             value={draft}
+            disabled={busy}
             onChange={(event) => setDraft(event.target.value)}
-            placeholder="Send a fake-cycle message"
+            placeholder="Send through backend /chat"
           />
-          <button type="submit" aria-label="Send message" title="Send message">
+          <button type="submit" aria-label="Send message" title="Send message" disabled={busy}>
             <SendHorizonal size={18} aria-hidden="true" />
           </button>
         </div>
@@ -248,7 +408,7 @@ function ChatPanel() {
 }
 
 function App() {
-  useFakeStateCycle();
+  useBackendEvents();
   return (
     <main className="appShell">
       <Stage />

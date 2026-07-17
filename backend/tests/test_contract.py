@@ -36,6 +36,16 @@ def test_chat_validation_rejects_empty_prompt() -> None:
     assert response.status_code == 422
 
 
+def test_dev_state_cycle_accepts_job() -> None:
+    client = TestClient(create_app())
+
+    response = client.post("/dev/state-cycle")
+
+    assert response.status_code == 202
+    assert response.json()["status"] == "started"
+    assert response.json()["job_id"]
+
+
 def test_websocket_receives_phase_1_events() -> None:
     client = TestClient(create_app())
     job_id = uuid4()
