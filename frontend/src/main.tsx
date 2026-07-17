@@ -31,17 +31,27 @@ type BackendEventType =
   | "audit_entry"
   | "dashboard_refresh";
 
-type BackendEvent = {
+type EventBase = {
   id: string;
-  type: BackendEventType;
   created_at: string;
-  job_id?: string;
-  state?: PlattState;
-  label?: string;
-  delta?: string;
-  index?: number;
-  done?: boolean;
 };
+
+type JobEvent = EventBase & {
+  job_id?: string;
+};
+
+type BackendEvent =
+  | (JobEvent & { type: "agent_state"; job_id: string; state: PlattState; label: string })
+  | (JobEvent & { type: "chat_delta"; job_id: string; delta: string; index: number; done: boolean })
+  | (JobEvent & { type: "job_created"; job_id: string; prompt: string })
+  | (JobEvent & { type: "work_item_moved"; job_id: string; work_item_id: string; title: string; from_state: string; to_state: string })
+  | (JobEvent & { type: "pipeline_update"; job_id: string; pipeline_name: string; status: string; url?: string | null })
+  | (JobEvent & { type: "plan_ready"; job_id: string; summary: string; has_blocking_changes: boolean })
+  | (JobEvent & { type: "approval_required"; job_id: string; approval_id: string; summary: string })
+  | (JobEvent & { type: "approval_result"; job_id: string; approval_id: string; approved: boolean })
+  | (JobEvent & { type: "apply_result"; job_id: string; success: boolean; summary: string })
+  | (JobEvent & { type: "audit_entry"; job_id: string; tool: string; action: string; outcome: string })
+  | (EventBase & { type: "dashboard_refresh"; metrics: Record<string, string | number> });
 
 type EventEntry = {
   id: string;
@@ -116,6 +126,56 @@ const stateLabels: Record<PlattState, string> = {
 
 const createId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const formatTime = (value?: string) => (value ? new Date(value).toLocaleTimeString() : new Date().toLocaleTimeString());
+const plattStates = new Set<PlattState>(["idle", "listening", "thinking", "working", "talking", "awaiting_approval", "celebrating", "concerned"]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasString(record: Record<string, unknown>, key: string): boolean {
+  return typeof record[key] === "string";
+}
+
+function hasJobId(record: Record<string, unknown>): boolean {
+  return hasString(record, "job_id");
+}
+
+function parseBackendEvent(value: unknown): BackendEvent | null {
+  if (!isRecord(value) || !hasString(value, "id") || !hasString(value, "created_at") || !hasString(value, "type")) return null;
+
+  switch (value.type) {
+    case "agent_state":
+      return hasJobId(value) && hasString(value, "label") && typeof value.state === "string" && plattStates.has(value.state as PlattState)
+        ? (value as BackendEvent)
+        : null;
+    case "chat_delta":
+      return hasJobId(value) && hasString(value, "delta") && Number.isInteger(value.index) && (value.index as number) >= 0 && typeof value.done === "boolean"
+        ? (value as BackendEvent)
+        : null;
+    case "job_created":
+      return hasJobId(value) && hasString(value, "prompt") ? (value as BackendEvent) : null;
+    case "work_item_moved":
+      return hasJobId(value) && ["work_item_id", "title", "from_state", "to_state"].every((key) => hasString(value, key)) ? (value as BackendEvent) : null;
+    case "pipeline_update":
+      return hasJobId(value) && hasString(value, "pipeline_name") && hasString(value, "status") && (value.url === undefined || value.url === null || typeof value.url === "string")
+        ? (value as BackendEvent)
+        : null;
+    case "plan_ready":
+      return hasJobId(value) && hasString(value, "summary") && typeof value.has_blocking_changes === "boolean" ? (value as BackendEvent) : null;
+    case "approval_required":
+      return hasJobId(value) && hasString(value, "approval_id") && hasString(value, "summary") ? (value as BackendEvent) : null;
+    case "approval_result":
+      return hasJobId(value) && hasString(value, "approval_id") && typeof value.approved === "boolean" ? (value as BackendEvent) : null;
+    case "apply_result":
+      return hasJobId(value) && typeof value.success === "boolean" && hasString(value, "summary") ? (value as BackendEvent) : null;
+    case "audit_entry":
+      return hasJobId(value) && ["tool", "action", "outcome"].every((key) => hasString(value, key)) ? (value as BackendEvent) : null;
+    case "dashboard_refresh":
+      return isRecord(value.metrics) && Object.values(value.metrics).every((metric) => typeof metric === "string" || typeof metric === "number") ? (value as BackendEvent) : null;
+    default:
+      return null;
+  }
+}
 
 const useEventStore = create<EventStore>((set) => ({
   state: "idle",
@@ -246,8 +306,11 @@ function useBackendEvents() {
 
       socket.addEventListener("message", (message) => {
         try {
-          const event = JSON.parse(message.data) as BackendEvent;
-          if (!event.id || !event.type || !event.created_at) return;
+          const event = parseBackendEvent(JSON.parse(message.data) as unknown);
+          if (!event) {
+            useEventStore.getState().addLocalEvent("concerned", "Received an unsupported backend event");
+            return;
+          }
           useEventStore.getState().applyBackendEvent(event);
           setLastEvent(event);
         } catch {
@@ -376,7 +439,9 @@ function formatDateTime(value: string) {
 function describePersistedEvent(event: PersistedJobEvent) {
   let payload: Record<string, unknown> = {};
   try {
-    payload = JSON.parse(event.payload) as Record<string, unknown>;
+    const parsed: unknown = JSON.parse(event.payload);
+    if (!isRecord(parsed)) throw new Error("Invalid event payload");
+    payload = parsed;
   } catch {
     return { title: event.type.replace(/_/g, " "), detail: "Event payload could not be read." };
   }
@@ -418,14 +483,18 @@ function AuditInspector({
   const [audit, setAudit] = React.useState<AsyncState<AuditEntry[]>>(initialAuditState);
   const [job, setJob] = React.useState<AsyncState<Job | null>>(initialJobState);
   const [jobEvents, setJobEvents] = React.useState<AsyncState<PersistedJobEvent[]>>(initialJobEventsState);
+  const auditRequestId = React.useRef(0);
   const jobRequestId = React.useRef(0);
 
   const refreshAudit = React.useCallback(async (showLoading = false) => {
+    const requestId = ++auditRequestId.current;
     if (showLoading) setAudit((current) => ({ ...current, loading: true, error: null }));
     try {
       const response = await requestJson<{ entries: AuditEntry[] }>("/audit");
+      if (requestId !== auditRequestId.current) return;
       setAudit({ data: response.entries, loading: false, error: null });
     } catch {
+      if (requestId !== auditRequestId.current) return;
       setAudit((current) => ({ ...current, loading: false, error: "Could not load the audit trail." }));
     }
   }, []);
@@ -434,17 +503,20 @@ function AuditInspector({
     const requestId = ++jobRequestId.current;
     setJob({ data: null, loading: true, error: null });
     setJobEvents({ data: [], loading: true, error: null });
-    try {
-      const [nextJob, eventsResponse] = await Promise.all([
+    const [jobResult, eventsResult] = await Promise.allSettled([
         requestJson<Job>(`/jobs/${encodeURIComponent(jobId)}`),
         requestJson<{ events: PersistedJobEvent[] }>(`/jobs/${encodeURIComponent(jobId)}/events`),
-      ]);
-      if (requestId !== jobRequestId.current) return;
-      setJob({ data: nextJob, loading: false, error: null });
-      setJobEvents({ data: eventsResponse.events, loading: false, error: null });
-    } catch {
-      if (requestId !== jobRequestId.current) return;
+    ]);
+    if (requestId !== jobRequestId.current) return;
+
+    if (jobResult.status === "fulfilled") {
+      setJob({ data: jobResult.value, loading: false, error: null });
+    } else {
       setJob({ data: null, loading: false, error: "This job is no longer available." });
+    }
+    if (eventsResult.status === "fulfilled") {
+      setJobEvents({ data: eventsResult.value.events, loading: false, error: null });
+    } else {
       setJobEvents({ data: [], loading: false, error: "Could not load this job's events." });
     }
   }, []);
@@ -465,11 +537,13 @@ function AuditInspector({
 
   React.useEffect(() => {
     if (!lastEvent) return;
-    if (lastEvent.type === "job_created") {
+    if (lastEvent.type === "job_created" || lastEvent.type === "audit_entry") {
       void refreshAudit();
+    }
+    if (lastEvent.type === "job_created") {
       if (!selectedJobId && lastEvent.job_id) onSelectJob(lastEvent.job_id);
     }
-    if (lastEvent.job_id !== selectedJobId || !selectedJobId) return;
+    if (!("job_id" in lastEvent) || lastEvent.job_id !== selectedJobId || !selectedJobId) return;
     const delay = lastEvent.type === "chat_delta" ? 300 : 0;
     const refreshTimer = window.setTimeout(() => void refreshJob(selectedJobId), delay);
     return () => window.clearTimeout(refreshTimer);

@@ -363,6 +363,13 @@ input {
   to { background-position: -240% 0; }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .spinning,
+  .skeletonStack span {
+    animation: none;
+  }
+}
+
 .stage {
   position: relative;
   min-height: 100vh;
