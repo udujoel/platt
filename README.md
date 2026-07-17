@@ -1,12 +1,12 @@
 # Platt
 
-Platt is an embodied DevOps agent for Azure DevOps and Azure. This repository starts with the Phase 1 skeleton from the PRD: a FastAPI event backend and a React/Vite browser shell with a placeholder 3D stage.
+Platt is an embodied DevOps agent for Azure DevOps and Azure. This repository delivers the Phase 1 event slice: a FastAPI streaming backend and a React/Vite browser shell with an animated low-poly 2D office stage.
 
 ## Repository Map
 
 ```text
-backend/     FastAPI app, event contract, websocket, fake chat job
-frontend/    React + Vite shell, R3F placeholder stage, chat/status UI
+backend/     FastAPI app, event contract, websocket, persisted streaming chat job
+frontend/    React + Vite shell, animated 2D office stage, audit and chat UI
 artefacts/   PRD and planning reports
 docs/        development, CI, repository governance
 ```
@@ -36,16 +36,18 @@ npm run dev
 Implemented:
 
 - Typed Phase 1 backend event contract for PRD section 7.3.
-- `/health`, `/ws`, and `/chat` placeholder job streaming fake events.
+- `/health`, `/ws`, and `/chat`; chat uses a swappable Anthropic streaming client and publishes typed state and delta events.
 - Local-only repository onboarding via `POST /onboarding`: inventories bounded files,
   Terraform module sources, and Azure Pipeline YAML path filters, then persists the
   result in SQLite. It never clones repositories or contacts Azure, Terraform, or git remotes.
-- React/Vite shell with full-bleed stage, chat panel, status chip, and fake event cycle.
+- React/Vite shell with the audit inspector, chat panel, animated office, speech bubble, and state-specific Platt rig.
 - Orca work packages for planning, backend, frontend, and operations.
 
 Not implemented yet:
 
-- Anthropic streaming, Azure DevOps integration, Terraform tools, Azure MCP integration, real 3D assets, private GitHub publish, and Vercel deployment.
+- Azure DevOps integration, Terraform tools, Azure MCP integration, real 3D assets, private GitHub publish, and a production API host.
+
+Set `ANTHROPIC_API_KEY` to enable live streaming replies. Without it, Platt streams a safe configuration message and returns to idle; `/dev/state-cycle` remains available to exercise every visual state without credentials.
 
 ## Local onboarding API
 
