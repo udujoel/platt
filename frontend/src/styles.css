@@ -30,9 +30,344 @@ input {
 
 .appShell {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(340px, 34vw, 460px);
+  grid-template-columns: clamp(272px, 24vw, 360px) minmax(0, 1fr) clamp(340px, 31vw, 460px);
   min-height: 100vh;
   background: linear-gradient(135deg, #10131a 0%, #161b24 52%, #0e1117 100%);
+}
+
+.auditPanel {
+  display: grid;
+  grid-template-rows: minmax(270px, 42vh) minmax(0, 1fr);
+  min-height: 100vh;
+  overflow: hidden;
+  border-right: 1px solid rgba(244, 247, 251, 0.12);
+  background: rgba(14, 18, 26, 0.94);
+  backdrop-filter: blur(18px);
+}
+
+.auditSection {
+  min-width: 0;
+  padding: 1.1rem;
+}
+
+.auditListSection {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 1rem;
+  border-bottom: 1px solid rgba(244, 247, 251, 0.1);
+}
+
+.auditHeader,
+.jobInspector > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.eyebrow {
+  margin: 0 0 0.28rem;
+  color: #99f6e4;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.auditSection h1,
+.auditSection h2,
+.auditSection h3,
+.auditSection p {
+  margin: 0;
+}
+
+.auditSection h1,
+.auditSection h2 {
+  font-size: 1.08rem;
+}
+
+.iconButton,
+.textButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(244, 247, 251, 0.15);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(244, 247, 251, 0.86);
+  cursor: pointer;
+}
+
+.iconButton {
+  width: 32px;
+  height: 32px;
+}
+
+.textButton {
+  min-height: 28px;
+  padding: 0 0.55rem;
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.iconButton:hover,
+.textButton:hover {
+  border-color: rgba(45, 212, 191, 0.48);
+  color: #99f6e4;
+}
+
+.iconButton:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+.spinning {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.auditList,
+.jobEventList {
+  display: grid;
+  gap: 0.45rem;
+  min-height: 0;
+  margin: 0;
+  padding: 0 0.15rem 0 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.auditItem {
+  position: relative;
+  display: grid;
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.25rem 0.45rem;
+  padding: 0.7rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  color: #f4f7fb;
+  text-align: left;
+}
+
+.auditItem:not(:disabled) {
+  cursor: pointer;
+}
+
+.auditItem:hover:not(:disabled),
+.auditItem.selected {
+  border-color: rgba(45, 212, 191, 0.32);
+  background: rgba(45, 212, 191, 0.1);
+}
+
+.auditItem:disabled {
+  opacity: 0.58;
+}
+
+.auditItemTop {
+  display: flex;
+  min-width: 0;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.auditItemTop strong,
+.auditAction,
+.auditOutcome,
+.auditItem time {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.auditItemTop strong {
+  color: #f4f7fb;
+  font-size: 0.78rem;
+}
+
+.auditItem time,
+.auditOutcome {
+  color: rgba(244, 247, 251, 0.5);
+  font-size: 0.66rem;
+}
+
+.auditAction {
+  grid-column: 1;
+  color: rgba(244, 247, 251, 0.8);
+  font-size: 0.76rem;
+  text-transform: capitalize;
+}
+
+.auditOutcome {
+  grid-column: 1;
+  color: #99f6e4;
+  text-transform: uppercase;
+}
+
+.auditItem > svg {
+  grid-column: 2;
+  grid-row: 1 / -1;
+  align-self: center;
+  color: #99f6e4;
+}
+
+.jobInspector {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 1rem;
+  overflow-y: auto;
+}
+
+.jobDetails {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0;
+}
+
+.jobDetails div {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.jobDetails dt {
+  color: rgba(244, 247, 251, 0.5);
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.jobDetails dd {
+  margin: 0;
+  color: rgba(244, 247, 251, 0.9);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.jobDetails .jobStatus {
+  color: #99f6e4;
+  font-weight: 800;
+  text-transform: capitalize;
+}
+
+.jobDetails .jobPrompt dd {
+  overflow-wrap: anywhere;
+}
+
+.jobDetails .jobIdentifier dd {
+  overflow: hidden;
+  color: rgba(244, 247, 251, 0.58);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jobEventHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.jobEventHeader h3 {
+  font-size: 0.82rem;
+}
+
+.jobEventHeader span {
+  display: inline-grid;
+  min-width: 1.4rem;
+  min-height: 1.4rem;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(139, 184, 255, 0.15);
+  color: #b9d3ff;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.jobEventList {
+  overflow: visible;
+}
+
+.jobEventList li {
+  display: grid;
+  grid-template-columns: 4.35rem minmax(0, 1fr);
+  gap: 0.55rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid rgba(244, 247, 251, 0.08);
+}
+
+.jobEventList time {
+  color: rgba(244, 247, 251, 0.48);
+  font-size: 0.64rem;
+  line-height: 1.35;
+}
+
+.jobEventList strong {
+  display: block;
+  color: rgba(244, 247, 251, 0.9);
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
+.jobEventList p {
+  margin-top: 0.16rem;
+  overflow-wrap: anywhere;
+  color: rgba(244, 247, 251, 0.57);
+  font-size: 0.71rem;
+  line-height: 1.35;
+}
+
+.emptyState,
+.loadError {
+  display: grid;
+  justify-items: start;
+  gap: 0.42rem;
+  padding: 0.95rem;
+  border: 1px dashed rgba(244, 247, 251, 0.16);
+  border-radius: 8px;
+  color: rgba(244, 247, 251, 0.72);
+}
+
+.emptyState svg { color: rgba(139, 184, 255, 0.78); }
+.emptyState strong { color: rgba(244, 247, 251, 0.9); font-size: 0.78rem; }
+.emptyState p,
+.loadError p { color: rgba(244, 247, 251, 0.56); font-size: 0.73rem; line-height: 1.45; }
+.loadError { border-color: rgba(248, 113, 113, 0.4); }
+.loadError svg { color: #fca5a5; }
+
+.skeletonStack {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.skeletonStack span {
+  display: block;
+  height: 3.9rem;
+  border-radius: 8px;
+  background: linear-gradient(100deg, rgba(255, 255, 255, 0.035) 35%, rgba(255, 255, 255, 0.11) 50%, rgba(255, 255, 255, 0.035) 65%);
+  background-size: 240% 100%;
+  animation: shimmer 1.4s infinite;
+}
+
+.jobSkeleton span { height: 1.55rem; }
+.eventSkeleton span { height: 2.8rem; }
+
+@keyframes shimmer {
+  to { background-position: -240% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinning,
+  .skeletonStack span {
+    animation: none;
+  }
 }
 
 .stage {
@@ -329,6 +664,22 @@ input {
   opacity: 0.58;
 }
 
+@media (max-width: 1100px) {
+  .appShell {
+    grid-template-columns: 280px minmax(0, 1fr) 340px;
+  }
+
+  .auditSection {
+    padding: 0.9rem;
+  }
+
+  .stageHeader,
+  .stageFooter {
+    left: 1.25rem;
+    right: 1.25rem;
+  }
+}
+
 @media (max-width: 860px) {
   body {
     overflow: auto;
@@ -336,7 +687,18 @@ input {
 
   .appShell {
     grid-template-columns: 1fr;
-    grid-template-rows: 58vh minmax(520px, auto);
+    grid-template-rows: minmax(520px, auto) 58vh minmax(520px, auto);
+  }
+
+  .auditPanel {
+    min-height: 520px;
+    grid-template-rows: minmax(250px, 42vh) minmax(270px, auto);
+    border-right: 0;
+    border-bottom: 1px solid rgba(244, 247, 251, 0.12);
+  }
+
+  .jobInspector {
+    overflow: visible;
   }
 
   .stage {
