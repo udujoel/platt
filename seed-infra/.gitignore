@@ -3,4 +3,5 @@
 *.tfstate.*
 crash.log
 *.tfplan
-*.tfvars.local
+*.tfvars
+!environments/dev.tfvars

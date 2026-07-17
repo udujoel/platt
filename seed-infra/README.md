@@ -42,6 +42,8 @@ PLAN_PIPELINE_DEFINITION_ID=<numeric-plan-definition-id>
 
 `TFSTATE_KEY` may be set if state keys are not derived from the environment. No client secret, subscription ID, tenant ID, access key, PAT, or backend access key belongs in `*.tfvars`, `backend.hcl`, YAML, or source control. The Azure CLI tasks obtain short-lived service-connection credentials at runtime.
 
+The existing sandbox resource group's Azure location is the source of truth for every seeded resource. The repository intentionally does not accept a separate location input, which prevents an accidental cross-region deployment.
+
 ## Local use
 
 Copy the backend example outside the repository or replace its angle-bracket values in a local untracked file, then run:

@@ -20,13 +20,11 @@ parameters:
 
 variables:
   terraformVersion: "1.7.5"
-  terraformDirectory: "$(Build.SourcesDirectory)"
+  terraformDirectory: "$(Build.SourcesDirectory)/seed-infra"
   tfvarsFile: "environments/${{ parameters.environment }}.tfvars"
   planArtifactName: "terraform-plan-${{ parameters.environment }}"
-  # Set these in a protected Azure DevOps variable group; placeholders only.
+  # Set these in a protected Azure DevOps variable group.
   planServiceConnection: "platt-plan"
-  TFSTATE_RESOURCE_GROUP: "<set-in-protected-variable-group>"
-  TFSTATE_STORAGE_ACCOUNT: "<set-in-protected-variable-group>"
   TFSTATE_CONTAINER: "tfstate"
 
 stages:

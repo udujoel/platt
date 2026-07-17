@@ -22,14 +22,12 @@ parameters:
 
 variables:
   terraformVersion: "1.7.5"
-  terraformDirectory: "$(Build.SourcesDirectory)"
+  terraformDirectory: "$(Build.SourcesDirectory)/seed-infra"
   planArtifactName: "terraform-plan-${{ parameters.environment }}"
   applyServiceConnection: "platt-apply"
   applyEnvironment: "platt-sandbox-apply"
   # The plan pipeline definition ID is protected configuration, not source truth.
   PLAN_PIPELINE_DEFINITION_ID: "<set-in-protected-variable-group>"
-  TFSTATE_RESOURCE_GROUP: "<set-in-protected-variable-group>"
-  TFSTATE_STORAGE_ACCOUNT: "<set-in-protected-variable-group>"
   TFSTATE_CONTAINER: "tfstate"
 
 stages:
@@ -43,14 +41,17 @@ stages:
           - checkout: none
           - bash: |
               set -euo pipefail
-              test -n "${{ parameters.planPipelineRunId }}"
-              test -n "${{ parameters.approvalRecordId }}"
-              case "${{ parameters.planPipelineRunId }}" in
+              test -n "$PLAN_PIPELINE_RUN_ID"
+              test -n "$APPROVAL_RECORD_ID"
+              case "$PLAN_PIPELINE_RUN_ID" in
                 *[!0-9]* ) echo "planPipelineRunId must be numeric"; exit 1 ;;
                 * ) ;;
               esac
-              echo "Apply request is linked to approval record: ${{ parameters.approvalRecordId }}"
+              printf 'Apply request is linked to approval record: %s\n' "$APPROVAL_RECORD_ID"
             displayName: Require plan run and approval record ID
+            env:
+              PLAN_PIPELINE_RUN_ID: "${{ parameters.planPipelineRunId }}"
+              APPROVAL_RECORD_ID: "${{ parameters.approvalRecordId }}"
 
   - stage: Apply
     displayName: Apply approved immutable plan
@@ -101,6 +102,9 @@ stages:
                       export ARM_SUBSCRIPTION_ID="$subscriptionId"
                       export ARM_USE_AZUREAD=true
                       export TF_IN_AUTOMATION=true
+
+                      test -f "$(Pipeline.Workspace)/approved-plan/.terraform.lock.hcl"
+                      cp "$(Pipeline.Workspace)/approved-plan/.terraform.lock.hcl" .terraform.lock.hcl
 
                       terraform init -input=false -lockfile=readonly \
                         -backend-config="resource_group_name=$(TFSTATE_RESOURCE_GROUP)" \

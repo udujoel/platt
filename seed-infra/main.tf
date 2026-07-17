@@ -11,7 +11,17 @@ module "naming" {
 }
 
 locals {
-  mandatory_tags = merge(var.tags, {
+  mandatory_tag_keys = {
+    Application = "application"
+    Environment = "environment"
+    ManagedBy   = "managedby"
+    Owner       = "owner"
+    CostCenter  = "costcenter"
+  }
+  mandatory_tags = merge({
+    for canonical_key, normalized_key in local.mandatory_tag_keys :
+    canonical_key => one([for key, value in var.tags : value if lower(key) == normalized_key])
+    }, {
     Environment = var.environment
     ManagedBy   = "terraform"
   })

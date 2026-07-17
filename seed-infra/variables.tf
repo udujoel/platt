@@ -35,21 +35,16 @@ variable "sandbox_resource_group_name" {
   type        = string
 }
 
-variable "location" {
-  description = "Azure region for sandbox resources."
-  type        = string
-}
-
 variable "tags" {
   description = "Mandatory governance tags; all listed keys are required."
   type        = map(string)
 
   validation {
-    condition = alltrue([
-      for key in ["Application", "Environment", "ManagedBy", "Owner", "CostCenter"] :
-      contains(keys(var.tags), key) && try(trimspace(var.tags[key]), "") != ""
+    condition = length(distinct([for key in keys(var.tags) : lower(key)])) == length(keys(var.tags)) && alltrue([
+      for required_key in ["application", "environment", "managedby", "owner", "costcenter"] :
+      length([for key, value in var.tags : key if lower(key) == required_key && trimspace(value) != ""]) == 1
     ])
-    error_message = "tags must include non-empty Application, Environment, ManagedBy, Owner, and CostCenter values."
+    error_message = "tags must include exactly one non-empty Application, Environment, ManagedBy, Owner, and CostCenter value (case-insensitive)."
   }
 }
 
@@ -59,11 +54,11 @@ variable "additional_tags" {
   default     = {}
 
   validation {
-    condition = length(setintersection(
-      toset(keys(var.additional_tags)),
-      toset(["Application", "Environment", "ManagedBy", "Owner", "CostCenter"])
+    condition = length(distinct([for key in keys(var.additional_tags) : lower(key)])) == length(keys(var.additional_tags)) && length(setintersection(
+      toset([for key in keys(var.additional_tags) : lower(key)]),
+      toset(["application", "environment", "managedby", "owner", "costcenter"])
     )) == 0
-    error_message = "additional_tags cannot override mandatory governance tags."
+    error_message = "additional_tags cannot override mandatory governance tags, including by a casing variant."
   }
 }
 
