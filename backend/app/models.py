@@ -1,9 +1,10 @@
 from datetime import datetime, timezone
 from enum import StrEnum
+from pathlib import Path
 from typing import Annotated, Literal, Union
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class PlattState(StrEnum):
@@ -146,3 +147,45 @@ class DevCycleResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"
+
+
+class OnboardingRequest(BaseModel):
+    repository_path: str = Field(min_length=1, max_length=4096)
+
+    @field_validator("repository_path")
+    @classmethod
+    def require_absolute_repository_path(cls, value: str) -> str:
+        if not Path(value).expanduser().is_absolute():
+            raise ValueError("repository_path must be an absolute local directory")
+        return value
+
+
+class FileInventoryEntry(BaseModel):
+    path: str
+    size_bytes: int = Field(ge=0)
+
+
+class TerraformModuleReference(BaseModel):
+    file_path: str
+    name: str
+    source: str
+
+
+class PipelinePathFilter(BaseModel):
+    scope: Literal["trigger", "pr", "schedules"]
+    include_paths: list[str] = Field(default_factory=list)
+    exclude_paths: list[str] = Field(default_factory=list)
+
+
+class PipelineYamlInventory(BaseModel):
+    file_path: str
+    path_filters: list[PipelinePathFilter] = Field(default_factory=list)
+
+
+class OnboardingRecord(BaseModel):
+    id: UUID
+    repository_path: str
+    created_at: datetime
+    files: list[FileInventoryEntry]
+    terraform_modules: list[TerraformModuleReference]
+    pipeline_yamls: list[PipelineYamlInventory]
