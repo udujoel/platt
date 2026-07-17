@@ -43,5 +43,9 @@ module "log_analytics_workspace" {
   name                = module.naming.log_analytics_workspace_name
   resource_group_name = data.azurerm_resource_group.sandbox.name
   location            = data.azurerm_resource_group.sandbox.location
-  tags                = local.common_tags
+  # This reference environment has no Azure Monitor private endpoint; make the
+  # provider's public-endpoint defaults an intentional, visible choice.
+  internet_ingestion_enabled = true
+  internet_query_enabled     = true
+  tags                       = local.common_tags
 }

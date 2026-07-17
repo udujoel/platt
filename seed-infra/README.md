@@ -44,6 +44,8 @@ PLAN_PIPELINE_DEFINITION_ID=<numeric-plan-definition-id>
 
 The existing sandbox resource group's Azure location is the source of truth for every seeded resource. The repository intentionally does not accept a separate location input, which prevents an accidental cross-region deployment.
 
+The reference Log Analytics workspace explicitly permits Azure Monitor's public ingestion and query endpoints because this small sandbox does not provision a private endpoint. A production environment should set both module inputs to `false` only after private-link ingestion and query connectivity is in place.
+
 ## Local use
 
 Copy the backend example outside the repository or replace its angle-bracket values in a local untracked file, then run:
