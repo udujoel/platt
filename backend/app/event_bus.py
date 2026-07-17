@@ -1,9 +1,13 @@
 import asyncio
+import logging
 from collections.abc import AsyncIterator
 from collections.abc import Callable
 from dataclasses import dataclass
 
 from app.models import Event
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -21,9 +25,18 @@ class EventBus:
     def set_recorder(self, recorder: Callable[[Event], None] | None) -> None:
         self._recorder = recorder
 
+    def clear_recorder(self, recorder: Callable[[Event], None]) -> None:
+        """Clear a recorder only when it is still the active app's recorder."""
+        if self._recorder is recorder:
+            self._recorder = None
+
     async def publish(self, event: Event) -> None:
+        """Record and deliver an event; recording is synchronous for the low-throughput local path."""
         if self._recorder:
-            self._recorder(event)
+            try:
+                self._recorder(event)
+            except Exception:
+                logger.exception("Unable to record event; continuing delivery to subscribers")
 
         async with self._lock:
             subscribers = tuple(self._subscribers)

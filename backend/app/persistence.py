@@ -48,6 +48,9 @@ class Persistence:
                     outcome text not null,
                     created_at text not null default current_timestamp
                 );
+
+                create index if not exists idx_events_job_id on events (job_id);
+                create index if not exists idx_audit_entries_job_id on audit_entries (job_id);
                 """
             )
 
@@ -135,4 +138,3 @@ class Persistence:
         with self._lock:
             rows = self._connection.execute(query, params).fetchall()
         return [dict(row) for row in rows]
-

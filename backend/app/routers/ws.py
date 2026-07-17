@@ -14,6 +14,6 @@ async def websocket_event_bus(websocket: WebSocket) -> None:
         async for event in event_bus.subscribe():
             await websocket.send_json(event.model_dump(mode="json"))
     except asyncio.CancelledError:
-        return
+        raise
     except WebSocketDisconnect:
         return

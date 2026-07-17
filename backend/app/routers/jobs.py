@@ -18,4 +18,3 @@ async def get_job_events(job_id: UUID, request: Request) -> dict:
     if not request.app.state.persistence.get_job(job_id):
         raise HTTPException(status_code=404, detail="Job not found")
     return {"events": request.app.state.persistence.list_job_events(job_id)}
-
