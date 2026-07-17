@@ -146,3 +146,33 @@ class DevCycleResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"
+
+
+class OnboardingRequest(BaseModel):
+    repository_path: str = Field(min_length=1, max_length=4096)
+
+
+class FileInventoryEntry(BaseModel):
+    path: str
+    size_bytes: int = Field(ge=0)
+
+
+class TerraformModuleReference(BaseModel):
+    file_path: str
+    name: str
+    source: str
+
+
+class PipelineYamlInventory(BaseModel):
+    file_path: str
+    include_paths: list[str] = Field(default_factory=list)
+    exclude_paths: list[str] = Field(default_factory=list)
+
+
+class OnboardingRecord(BaseModel):
+    id: UUID
+    repository_path: str
+    created_at: datetime
+    files: list[FileInventoryEntry]
+    terraform_modules: list[TerraformModuleReference]
+    pipeline_yamls: list[PipelineYamlInventory]
