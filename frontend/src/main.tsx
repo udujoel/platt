@@ -1,8 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { ChevronRight, CircleAlert, ClipboardList, Play, RefreshCw, SendHorizonal } from "lucide-react";
-import { Canvas, useFrame } from "@react-three/fiber";
-import type { Mesh } from "three";
 import { create } from "zustand";
 import "./styles.css";
 
@@ -359,60 +357,62 @@ async function postJson<T>(path: string, body?: unknown): Promise<T> {
   });
 }
 
-function PlattCapsule() {
-  const mesh = React.useRef<Mesh>(null);
-  const state = useEventStore((store) => store.state);
+function PlattCharacter({ state, speech }: { state: PlattState; speech: string }) {
+  const [bubbleVisible, setBubbleVisible] = React.useState(false);
+  const hasSpoken = React.useRef(false);
 
-  useFrame(({ clock }) => {
-    if (!mesh.current) return;
-    const elapsed = clock.getElapsedTime();
-    mesh.current.rotation.y = elapsed * 0.35;
-    mesh.current.position.y = Math.sin(elapsed * 1.4) * 0.08;
-  });
-
-  const color =
-    state === "concerned"
-      ? "#f87171"
-      : state === "celebrating"
-        ? "#2dd4bf"
-        : state === "thinking" || state === "working"
-          ? "#ffb454"
-          : "#8bb8ff";
+  React.useEffect(() => {
+    if (state === "talking" && speech) {
+      hasSpoken.current = true;
+      setBubbleVisible(true);
+      return undefined;
+    }
+    if (!hasSpoken.current) return undefined;
+    const hideTimer = window.setTimeout(() => setBubbleVisible(false), 4000);
+    return () => window.clearTimeout(hideTimer);
+  }, [speech, state]);
 
   return (
-    <group>
-      <mesh ref={mesh} castShadow receiveShadow>
-        <capsuleGeometry args={[0.72, 2.25, 16, 32]} />
-        <meshStandardMaterial color={color} metalness={0.28} roughness={0.36} />
-      </mesh>
-      <mesh position={[0, -1.72, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <circleGeometry args={[1.2, 48]} />
-        <meshBasicMaterial color="#1f2937" transparent opacity={0.26} />
-      </mesh>
-    </group>
+    <div className={`plattCharacter ${state}`} aria-label={`Platt is ${stateLabels[state].toLowerCase()}`}>
+      <div className="confetti" aria-hidden="true"><i /><i /><i /><i /><i /></div>
+      {bubbleVisible ? <div className="plattBubble">{speech.slice(-220)}</div> : null}
+      {state === "thinking" ? <div className="thoughtDots" aria-label="Platt is thinking"><b /> <b /> <b /></div> : null}
+      <div className="plattShadow" aria-hidden="true" />
+      <div className="plattBody" aria-hidden="true">
+        <div className="plattHead"><span className="ear left" /><span className="ear right" /><div className="hair" /><div className="face"><span className="eye left" /><span className="eye right" /><span className="nose" /><span className="mouth" /></div></div>
+        <div className="plattNeck" /><div className="plattTorso"><span className="shirt" /><span className="lapel left" /><span className="lapel right" /></div>
+        <div className="plattArm left"><span className="hand" /></div><div className="plattArm right"><span className="hand" /></div>
+        <div className="plattLeg left"><span className="shoe" /></div><div className="plattLeg right"><span className="shoe" /></div>
+      </div>
+    </div>
   );
+}
+
+function OfficeScene({ state, speech }: { state: PlattState; speech: string }) {
+  return <div className={`officeScene ${state}`}>
+    <div className="wallBoard" aria-label="Miniature Kanban board"><span>PLATT BOARD</span><div><i /> <i /> <i /></div></div>
+    <div className="serverRack" aria-label="Server rack"><i /><i /><i /><i /></div>
+    <div className="desk"><div className="monitor"><span>PLATT</span><i /></div><div className="keyboard" /><div className="deskLeg left" /><div className="deskLeg right" /></div>
+    <div className="plant"><i /><i /><i /><b /></div><div className="pebble" aria-hidden="true" /><PlattCharacter state={state} speech={speech} /><div className="floorGrid" aria-hidden="true" />
+  </div>;
 }
 
 function Stage() {
   const state = useEventStore((store) => store.state);
   const connection = useEventStore((store) => store.connection);
+  const messages = useEventStore((store) => store.messages);
+  const latestPlattMessage = [...messages].reverse().find((message) => message.author === "platt")?.text ?? "";
 
   return (
-    <section className="stage" aria-label="Platt avatar stage">
+    <section className="stage" aria-label="Platt office stage">
       <div className="stageHeader">
         <StatusChip state={state} />
         <span className={`connectionBadge ${connection}`}>{connection}</span>
       </div>
-      <Canvas camera={{ position: [0, 0.4, 5], fov: 42 }} dpr={[1, 1.5]} shadows>
-        <color attach="background" args={["#10131a"]} />
-        <ambientLight intensity={0.45} />
-        <directionalLight position={[3, 4, 5]} intensity={1.7} castShadow />
-        <pointLight position={[-3, -1, 2]} intensity={1.2} color="#2dd4bf" />
-        <PlattCapsule />
-      </Canvas>
+      <OfficeScene state={state} speech={latestPlattMessage} />
       <div className="stageFooter">
-        <span>Platt capsule placeholder</span>
-        <span>Backend event contract</span>
+        <span>Platt · embodied DevOps agent</span>
+        <span>Live event projection</span>
       </div>
     </section>
   );
