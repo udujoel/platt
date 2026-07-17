@@ -1,8 +1,14 @@
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
+
+
+@pytest.fixture(autouse=True)
+def configure_onboarding_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PLATT_ONBOARDING_ROOT", str(tmp_path))
 
 
 def _client(tmp_path: Path) -> TestClient:
@@ -106,6 +112,28 @@ def test_onboarding_does_not_follow_symlinks_or_inventory_git_metadata(tmp_path:
     assert [entry["path"] for entry in response.json()["files"]] == ["visible.txt"]
 
 
+def test_onboarding_rejects_symlinked_repository_root(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    linked_repository = tmp_path / "repository-link"
+    repository.mkdir()
+    linked_repository.symlink_to(repository, target_is_directory=True)
+
+    response = _client(tmp_path).post("/onboarding", json={"repository_path": str(linked_repository)})
+
+    assert response.status_code == 400
+    assert "must not be a symlink" in response.json()["detail"]
+
+
+def test_onboarding_rejects_repositories_outside_trusted_root(tmp_path: Path) -> None:
+    outside_repository = tmp_path.parent / f"{tmp_path.name}-outside-repository"
+    outside_repository.mkdir()
+
+    response = _client(tmp_path).post("/onboarding", json={"repository_path": str(outside_repository)})
+
+    assert response.status_code == 400
+    assert "configured onboarding root" in response.json()["detail"]
+
+
 def test_onboarding_inventories_conventional_pipeline_file_without_a_trigger(tmp_path: Path) -> None:
     repository = tmp_path / "repository"
     repository.mkdir()
@@ -121,6 +149,24 @@ def test_onboarding_inventories_conventional_pipeline_file_without_a_trigger(tmp
     assert response.json()["pipeline_yamls"] == [
         {"file_path": "azure-pipelines.release.yaml", "include_paths": [], "exclude_paths": []}
     ]
+
+
+def test_onboarding_ignores_non_pipeline_yaml_with_nested_azure_keys(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    (repository / "application.yaml").write_text(
+        """service:
+  pool:
+    size: 4
+  resources:
+    cache: enabled
+"""
+    )
+
+    response = _client(tmp_path).post("/onboarding", json={"repository_path": str(repository)})
+
+    assert response.status_code == 201
+    assert response.json()["pipeline_yamls"] == []
 
 
 def test_onboarding_returns_not_found_for_unknown_record(tmp_path: Path) -> None:

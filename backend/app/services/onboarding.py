@@ -10,7 +10,6 @@ import json
 import os
 import re
 import sqlite3
-import tempfile
 from collections.abc import Iterator
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,6 +25,7 @@ from app.models import (
 MAX_FILES = 5_000
 MAX_DIRECTORIES = 2_000
 MAX_FILE_BYTES = 1_000_000
+TRUSTED_ONBOARDING_ROOT_ENV = "PLATT_ONBOARDING_ROOT"
 IGNORED_DIRECTORY_NAMES = {".git", ".terraform", "node_modules", ".venv", "venv", "__pycache__"}
 TERRAFORM_MODULE_RE = re.compile(
     r'(?ms)^\s*module\s+"(?P<name>[^"]+)"\s*\{(?P<body>.*?)^\s*\}'
@@ -59,17 +59,39 @@ def _is_within(root: Path, candidate: Path) -> bool:
     return True
 
 
+def _trusted_onboarding_root() -> Path:
+    configured_root = os.environ.get(TRUSTED_ONBOARDING_ROOT_ENV, "").strip()
+    if not configured_root:
+        raise OnboardingError(f"{TRUSTED_ONBOARDING_ROOT_ENV} must be configured before onboarding")
+
+    supplied_root = Path(configured_root).expanduser()
+    if supplied_root.is_symlink():
+        raise OnboardingError(f"{TRUSTED_ONBOARDING_ROOT_ENV} must not be a symlink")
+    try:
+        root = supplied_root.resolve(strict=True)
+    except OSError as error:
+        raise OnboardingError(f"{TRUSTED_ONBOARDING_ROOT_ENV} does not exist or cannot be resolved") from error
+    if not root.is_dir():
+        raise OnboardingError(f"{TRUSTED_ONBOARDING_ROOT_ENV} must point to a directory")
+    return root
+
+
 def validate_repository_path(repository_path: str) -> Path:
-    """Resolve an absolute local directory without allowing symlink escape."""
+    """Resolve a repository under the configured checkout root without symlink escape."""
     supplied = Path(repository_path).expanduser()
     if not supplied.is_absolute():
         raise OnboardingError("repository_path must be an absolute local directory")
+    if supplied.is_symlink():
+        raise OnboardingError("repository_path must not be a symlink")
     try:
         root = supplied.resolve(strict=True)
     except OSError as error:
         raise OnboardingError("repository_path does not exist or cannot be resolved") from error
     if not root.is_dir():
         raise OnboardingError("repository_path must point to a directory")
+    trusted_root = _trusted_onboarding_root()
+    if not _is_within(trusted_root, root):
+        raise OnboardingError("repository_path must be inside the configured onboarding root")
     return root
 
 
@@ -186,9 +208,7 @@ def _pipeline_yamls(root: Path, files: list[Path]) -> list[PipelineYamlInventory
         # Conventionally named pipeline files may consist only of a template/steps,
         # while other Azure definitions usually contain one of these root-level keys.
         conventional_name = "azure-pipelines" in path.name.lower()
-        azure_signature = re.search(
-            r"(?m)^\s*(trigger|pr|schedules|extends|pool|stages|resources)\s*:", contents
-        )
+        azure_signature = re.search(r"(?m)^(trigger|pr|schedules|extends|pool|stages|resources)\s*:", contents)
         if not conventional_name and not azure_signature:
             continue
         include_paths, exclude_paths = _yaml_path_filters(contents)
@@ -219,10 +239,22 @@ class OnboardingStore:
     """Small SQLite store for completed local onboarding records."""
 
     def __init__(self, database_path: Path | None = None) -> None:
-        self.database_path = database_path or Path(
-            os.environ.get("PLATT_ONBOARDING_DB", str(Path(tempfile.gettempdir()) / "platt-onboarding.sqlite3"))
-        )
+        configured_path = os.environ.get("PLATT_ONBOARDING_DB", "").strip()
+        self._uses_private_default = database_path is None and not configured_path
+        if database_path is not None:
+            self.database_path = database_path
+        elif configured_path:
+            self.database_path = Path(configured_path)
+        else:
+            self.database_path = self._private_default_database_path()
         self._initialize()
+
+    @staticmethod
+    def _private_default_database_path() -> Path:
+        data_directory = Path.cwd() / ".platt"
+        data_directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+        data_directory.chmod(0o700)
+        return data_directory / "onboarding.sqlite3"
 
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.database_path)
@@ -240,6 +272,8 @@ class OnboardingStore:
                 )
                 """
             )
+        if self._uses_private_default:
+            self.database_path.chmod(0o600)
 
     def save(self, record: OnboardingRecord) -> OnboardingRecord:
         payload = record.model_dump_json()

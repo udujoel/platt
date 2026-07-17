@@ -13,7 +13,7 @@ def _store(request: Request) -> OnboardingStore:
 
 
 @router.post("", response_model=OnboardingRecord, status_code=status.HTTP_201_CREATED)
-async def onboard_repository(request: Request, payload: OnboardingRequest) -> OnboardingRecord:
+def onboard_repository(request: Request, payload: OnboardingRequest) -> OnboardingRecord:
     """Index a pre-existing local repository; this endpoint makes no network calls."""
     try:
         record = inspect_repository(payload.repository_path)
@@ -23,7 +23,7 @@ async def onboard_repository(request: Request, payload: OnboardingRequest) -> On
 
 
 @router.get("/{onboarding_id}", response_model=OnboardingRecord)
-async def get_onboarding_record(request: Request, onboarding_id: UUID) -> OnboardingRecord:
+def get_onboarding_record(request: Request, onboarding_id: UUID) -> OnboardingRecord:
     try:
         return _store(request).get(onboarding_id)
     except OnboardingNotFoundError as error:

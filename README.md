@@ -49,7 +49,8 @@ Not implemented yet:
 
 ## Local onboarding API
 
-Provide the absolute path of a repository that already exists on the backend host:
+Configure `PLATT_ONBOARDING_ROOT` to the app-owned directory containing checked-out
+repositories, then provide the absolute path of a repository beneath that root:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/onboarding \
@@ -57,8 +58,8 @@ curl -X POST http://127.0.0.1:8000/onboarding \
   -d '{"repository_path":"/absolute/path/to/repository"}'
 ```
 
-Retrieve the persisted response with `GET /onboarding/{id}`. Records are stored in
-SQLite at `/tmp/platt-onboarding.sqlite3` by default; set `PLATT_ONBOARDING_DB` to use
+Retrieve the persisted response with `GET /onboarding/{id}`. Records are stored in the
+owner-only `.platt/` app-state directory by default; set `PLATT_ONBOARDING_DB` to use
 another local SQLite path. Scanning is capped at 5,000 files and 2,000 directories,
 does not follow symlinks, and skips common generated/metadata directories.
 

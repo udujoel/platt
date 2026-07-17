@@ -3,6 +3,7 @@
 .env.local
 .env.*.local
 .venv/
+.platt/
 node_modules/
 dist/
 __pycache__/
