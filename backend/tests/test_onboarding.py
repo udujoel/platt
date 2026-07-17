@@ -203,6 +203,10 @@ def test_onboarding_parses_terraform_blocks_with_trailing_comments(tmp_path: Pat
   providers = {
     azurerm = azurerm.shared
   }
+  description = <<-EOT
+    A literal with braces: { and }
+  EOT
+  # This comment contains a closing brace: }
 } # network module
 '''
     )

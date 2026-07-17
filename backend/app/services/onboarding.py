@@ -29,6 +29,7 @@ TRUSTED_ONBOARDING_ROOT_ENV = "PLATT_ONBOARDING_ROOT"
 IGNORED_DIRECTORY_NAMES = {".git", ".terraform", "node_modules", ".venv", "venv", "__pycache__"}
 TERRAFORM_MODULE_START_RE = re.compile(r'(?m)^\s*module\s+"(?P<name>[^"]+)"\s*\{')
 TERRAFORM_SOURCE_RE = re.compile(r'(?m)^\s*source\s*=\s*"(?P<source>[^"]+)"')
+TERRAFORM_HEREDOC_START_RE = re.compile(r"<<-?\s*(?P<delimiter>[A-Za-z_][A-Za-z0-9_]*)")
 YAML_SCOPE_RE = re.compile(r"^(?P<scope>trigger|pr|schedules)\s*:\s*(?:#.*)?$")
 YAML_PATHS_RE = re.compile(r"^\s*paths\s*:\s*(?:#.*)?$")
 YAML_LIST_ITEM_RE = re.compile(r"^\s*-\s*(?P<path>[^#\s][^#]*?)\s*(?:#.*)?$")
@@ -124,11 +125,15 @@ def _walk_files(root: Path) -> Iterator[Path]:
             yield path
 
 
-def _read_text(path: Path) -> str | None:
+def _read_bounded_text(root: Path, path: Path, file_kind: str) -> str | None:
     try:
-        return path.read_text(encoding="utf-8", errors="replace")
+        with path.open("rb") as file:
+            contents = file.read(MAX_FILE_BYTES + 1)
     except OSError:
         return None
+    if len(contents) > MAX_FILE_BYTES:
+        raise OnboardingError(f"{file_kind} exceeds the {MAX_FILE_BYTES} byte onboarding limit: {_relative_path(root, path)}")
+    return contents.decode("utf-8", errors="replace")
 
 
 def _inventory_files(root: Path, files: list[Path]) -> list[FileInventoryEntry]:
@@ -149,8 +154,20 @@ def _terraform_module_bodies(contents: str) -> Iterator[tuple[str, str]]:
         depth = 0
         quote: str | None = None
         escaped = False
-        for index in range(opening_brace, len(contents)):
+        heredoc_delimiter: str | None = None
+        index = opening_brace
+        line_start = True
+        while index < len(contents):
             character = contents[index]
+            if heredoc_delimiter:
+                line_end = contents.find("\n", index)
+                if line_end == -1:
+                    line_end = len(contents)
+                if line_start and contents[index:line_end].strip() == heredoc_delimiter:
+                    heredoc_delimiter = None
+                line_start = line_end < len(contents)
+                index = line_end + 1
+                continue
             if quote:
                 if escaped:
                     escaped = False
@@ -158,16 +175,41 @@ def _terraform_module_bodies(contents: str) -> Iterator[tuple[str, str]]:
                     escaped = True
                 elif character == quote:
                     quote = None
+                line_start = character == "\n"
+                index += 1
+                continue
+            if character == "#" or contents.startswith("//", index):
+                line_end = contents.find("\n", index)
+                if line_end == -1:
+                    break
+                index = line_end + 1
+                line_start = True
+                continue
+            if contents.startswith("/*", index):
+                comment_end = contents.find("*/", index + 2)
+                if comment_end == -1:
+                    break
+                line_start = contents[index:comment_end + 2].endswith("\n")
+                index = comment_end + 2
                 continue
             if character in {"\"", "'"}:
                 quote = character
-            elif character == "{":
-                depth += 1
-            elif character == "}":
-                depth -= 1
-                if depth == 0:
-                    yield match.group("name"), contents[opening_brace + 1 : index]
-                    break
+            else:
+                heredoc_match = TERRAFORM_HEREDOC_START_RE.match(contents, index)
+                if heredoc_match:
+                    heredoc_delimiter = heredoc_match.group("delimiter")
+                    index = heredoc_match.end()
+                    line_start = False
+                    continue
+                if character == "{":
+                    depth += 1
+                elif character == "}":
+                    depth -= 1
+                    if depth == 0:
+                        yield match.group("name"), contents[opening_brace + 1 : index]
+                        break
+            line_start = character == "\n"
+            index += 1
 
 
 def _terraform_modules(root: Path, files: list[Path]) -> list[TerraformModuleReference]:
@@ -175,9 +217,7 @@ def _terraform_modules(root: Path, files: list[Path]) -> list[TerraformModuleRef
     for path in files:
         if path.suffix != ".tf":
             continue
-        if path.stat().st_size > MAX_FILE_BYTES:
-            raise OnboardingError(f"Terraform file exceeds the {MAX_FILE_BYTES} byte onboarding limit: {_relative_path(root, path)}")
-        contents = _read_text(path)
+        contents = _read_bounded_text(root, path, "Terraform file")
         if contents is None:
             continue
         for name, body in _terraform_module_bodies(contents):
@@ -249,9 +289,7 @@ def _pipeline_yamls(root: Path, files: list[Path]) -> list[PipelineYamlInventory
     for path in files:
         if path.suffix.lower() not in {".yml", ".yaml"}:
             continue
-        if path.stat().st_size > MAX_FILE_BYTES:
-            raise OnboardingError(f"Pipeline YAML exceeds the {MAX_FILE_BYTES} byte onboarding limit: {_relative_path(root, path)}")
-        contents = _read_text(path)
+        contents = _read_bounded_text(root, path, "Pipeline YAML")
         if contents is None:
             continue
         # Conventionally named pipeline files may consist only of a template/steps,
