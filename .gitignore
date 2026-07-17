@@ -13,3 +13,6 @@ __pycache__/
 .vercel/
 terraform.tfstate*
 *.tfplan
+*.db
+*.sqlite
+*.sqlite3

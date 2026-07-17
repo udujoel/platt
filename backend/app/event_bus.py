@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import AsyncIterator
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from app.models import Event
@@ -15,8 +16,15 @@ class EventBus:
     def __init__(self) -> None:
         self._subscribers: set[_Subscriber] = set()
         self._lock = asyncio.Lock()
+        self._recorder: Callable[[Event], None] | None = None
+
+    def set_recorder(self, recorder: Callable[[Event], None] | None) -> None:
+        self._recorder = recorder
 
     async def publish(self, event: Event) -> None:
+        if self._recorder:
+            self._recorder(event)
+
         async with self._lock:
             subscribers = tuple(self._subscribers)
 
@@ -41,4 +49,3 @@ class EventBus:
 
 
 event_bus = EventBus()
-
