@@ -1,0 +1,101 @@
+# PR-only plan pipeline. Create a pipeline definition from this file and give
+# its service connection the plan identity described in ../README.md.
+trigger: none
+
+pr:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - "*"
+
+parameters:
+  - name: environment
+    displayName: Terraform environment
+    type: string
+    default: dev
+    values:
+      - dev
+
+variables:
+  terraformVersion: "1.7.5"
+  terraformDirectory: "$(Build.SourcesDirectory)/seed-infra"
+  tfvarsFile: "environments/${{ parameters.environment }}.tfvars"
+  planArtifactName: "terraform-plan-${{ parameters.environment }}"
+  # Set these in a protected Azure DevOps variable group.
+  planServiceConnection: "platt-plan"
+  TFSTATE_CONTAINER: "tfstate"
+
+stages:
+  - stage: Plan
+    displayName: Plan sandbox infrastructure
+    jobs:
+      - job: TerraformPlan
+        displayName: Terraform fmt, validate, and plan
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: self
+            clean: true
+
+          - task: TerraformInstaller@1
+            displayName: Install Terraform
+            inputs:
+              terraformVersion: "$(terraformVersion)"
+
+          - task: AzureCLI@2
+            displayName: Validate and create immutable plan artifact
+            inputs:
+              azureSubscription: "$(planServiceConnection)"
+              scriptType: bash
+              scriptLocation: inlineScript
+              addSpnToEnvironment: true
+              inlineScript: |
+                set -euo pipefail
+                cd "$(terraformDirectory)"
+
+                export ARM_CLIENT_ID="$servicePrincipalId"
+                export ARM_CLIENT_SECRET="$servicePrincipalKey"
+                export ARM_TENANT_ID="$tenantId"
+                export ARM_SUBSCRIPTION_ID="$subscriptionId"
+                export ARM_USE_AZUREAD=true
+                export TF_IN_AUTOMATION=true
+
+                terraform fmt -check -recursive
+                terraform init -backend=false -input=false
+                terraform validate -no-color
+
+                terraform init -reconfigure -input=false -lockfile=readonly \
+                  -backend-config="resource_group_name=$(TFSTATE_RESOURCE_GROUP)" \
+                  -backend-config="storage_account_name=$(TFSTATE_STORAGE_ACCOUNT)" \
+                  -backend-config="container_name=$(TFSTATE_CONTAINER)" \
+                  -backend-config="key=platt/${{ parameters.environment }}.tfstate" \
+                  -backend-config="use_azuread_auth=true"
+
+                set +e
+                terraform plan -input=false -lock-timeout=5m -detailed-exitcode \
+                  -var-file="$(tfvarsFile)" \
+                  -out="$(Build.ArtifactStagingDirectory)/plan.tfplan" \
+                  -no-color
+                plan_exit_code=$?
+                set -e
+                if [ "$plan_exit_code" -ne 0 ] && [ "$plan_exit_code" -ne 2 ]; then
+                  exit "$plan_exit_code"
+                fi
+
+                terraform show -json "$(Build.ArtifactStagingDirectory)/plan.tfplan" \
+                  > "$(Build.ArtifactStagingDirectory)/plan.json"
+                cp .terraform.lock.hcl "$(Build.ArtifactStagingDirectory)/.terraform.lock.hcl"
+            env:
+              # The service connection provides auth; this variable is a non-secret placeholder.
+              TFSTATE_RESOURCE_GROUP: "$(TFSTATE_RESOURCE_GROUP)"
+              TFSTATE_STORAGE_ACCOUNT: "$(TFSTATE_STORAGE_ACCOUNT)"
+              TFSTATE_CONTAINER: "$(TFSTATE_CONTAINER)"
+
+          - task: PublishPipelineArtifact@1
+            displayName: Publish binary plan and JSON plan
+            inputs:
+              targetPath: "$(Build.ArtifactStagingDirectory)"
+              artifact: "$(planArtifactName)"
+              publishLocation: pipeline

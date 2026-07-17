@@ -1,0 +1,8 @@
+# Copy outside the repository and replace all placeholders before `terraform init`.
+# This file intentionally contains no credentials. Authentication is supplied by
+# Azure CLI locally or by the Azure DevOps service connection in CI.
+resource_group_name  = "<state-resource-group>"
+storage_account_name = "<state-storage-account>"
+container_name       = "tfstate"
+key                  = "platt/dev.tfstate"
+use_azuread_auth     = true

@@ -1,0 +1,122 @@
+# No CI or PR trigger. The backend starts this pipeline only after recording a
+# human approval decision, then Azure DevOps enforces a second approval at the
+# platt-sandbox-apply Environment before the apply service connection is used.
+trigger: none
+pr: none
+
+parameters:
+  - name: environment
+    displayName: Terraform environment
+    type: string
+    default: dev
+    values:
+      - dev
+  - name: planPipelineRunId
+    displayName: Successful platt-plan pipeline run ID
+    type: string
+    default: ""
+  - name: approvalRecordId
+    displayName: Backend human approval record ID (audit correlation)
+    type: string
+    default: ""
+
+variables:
+  terraformVersion: "1.7.5"
+  terraformDirectory: "$(Build.SourcesDirectory)/seed-infra"
+  planArtifactName: "terraform-plan-${{ parameters.environment }}"
+  applyServiceConnection: "platt-apply"
+  applyEnvironment: "platt-sandbox-apply"
+  # The plan pipeline definition ID is protected configuration, not source truth.
+  PLAN_PIPELINE_DEFINITION_ID: "<set-in-protected-variable-group>"
+  TFSTATE_CONTAINER: "tfstate"
+
+stages:
+  - stage: Preconditions
+    displayName: Verify apply request is traceable
+    jobs:
+      - job: VerifyInputs
+        pool:
+          vmImage: ubuntu-latest
+        steps:
+          - checkout: none
+          - bash: |
+              set -euo pipefail
+              test -n "$PLAN_PIPELINE_RUN_ID"
+              test -n "$APPROVAL_RECORD_ID"
+              case "$PLAN_PIPELINE_RUN_ID" in
+                *[!0-9]* ) echo "planPipelineRunId must be numeric"; exit 1 ;;
+                * ) ;;
+              esac
+              printf 'Apply request is linked to approval record: %s\n' "$APPROVAL_RECORD_ID"
+            displayName: Require plan run and approval record ID
+            env:
+              PLAN_PIPELINE_RUN_ID: "${{ parameters.planPipelineRunId }}"
+              APPROVAL_RECORD_ID: "${{ parameters.approvalRecordId }}"
+
+  - stage: Apply
+    displayName: Apply approved immutable plan
+    dependsOn: Preconditions
+    condition: succeeded()
+    jobs:
+      - deployment: ApplySandbox
+        displayName: Human-approved sandbox apply
+        # Configure a required manual Approval and check on this Environment in Azure DevOps.
+        environment: "$(applyEnvironment)"
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: self
+                  clean: true
+
+                - task: DownloadPipelineArtifact@2
+                  displayName: Download exact plan artifact
+                  inputs:
+                    buildType: specific
+                    project: "$(System.TeamProject)"
+                    definition: "$(PLAN_PIPELINE_DEFINITION_ID)"
+                    buildVersionToDownload: specific
+                    pipelineId: "${{ parameters.planPipelineRunId }}"
+                    artifactName: "$(planArtifactName)"
+                    targetPath: "$(Pipeline.Workspace)/approved-plan"
+
+                - task: TerraformInstaller@1
+                  displayName: Install Terraform
+                  inputs:
+                    terraformVersion: "$(terraformVersion)"
+
+                - task: AzureCLI@2
+                  displayName: Apply downloaded binary plan
+                  inputs:
+                    azureSubscription: "$(applyServiceConnection)"
+                    scriptType: bash
+                    scriptLocation: inlineScript
+                    addSpnToEnvironment: true
+                    inlineScript: |
+                      set -euo pipefail
+                      cd "$(terraformDirectory)"
+
+                      export ARM_CLIENT_ID="$servicePrincipalId"
+                      export ARM_CLIENT_SECRET="$servicePrincipalKey"
+                      export ARM_TENANT_ID="$tenantId"
+                      export ARM_SUBSCRIPTION_ID="$subscriptionId"
+                      export ARM_USE_AZUREAD=true
+                      export TF_IN_AUTOMATION=true
+
+                      test -f "$(Pipeline.Workspace)/approved-plan/.terraform.lock.hcl"
+                      cp "$(Pipeline.Workspace)/approved-plan/.terraform.lock.hcl" .terraform.lock.hcl
+
+                      terraform init -input=false -lockfile=readonly \
+                        -backend-config="resource_group_name=$(TFSTATE_RESOURCE_GROUP)" \
+                        -backend-config="storage_account_name=$(TFSTATE_STORAGE_ACCOUNT)" \
+                        -backend-config="container_name=$(TFSTATE_CONTAINER)" \
+                        -backend-config="key=platt/${{ parameters.environment }}.tfstate" \
+                        -backend-config="use_azuread_auth=true"
+
+                      test -f "$(Pipeline.Workspace)/approved-plan/plan.tfplan"
+                      terraform apply -input=false -lock-timeout=5m -no-color \
+                        "$(Pipeline.Workspace)/approved-plan/plan.tfplan"
+                  env:
+                    TFSTATE_RESOURCE_GROUP: "$(TFSTATE_RESOURCE_GROUP)"
+                    TFSTATE_STORAGE_ACCOUNT: "$(TFSTATE_STORAGE_ACCOUNT)"
+                    TFSTATE_CONTAINER: "$(TFSTATE_CONTAINER)"
