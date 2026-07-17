@@ -139,6 +139,10 @@ class ChatResponse(BaseModel):
     status: Literal["accepted"] = "accepted"
 
 
+class DevCycleResponse(BaseModel):
+    status: Literal["started"] = "started"
+    job_id: UUID
+
+
 class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"
-

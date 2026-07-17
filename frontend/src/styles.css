@@ -110,6 +110,30 @@ input {
   box-shadow: 0 0 0 5px rgba(248, 113, 113, 0.16);
 }
 
+.connectionBadge {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  border: 1px solid rgba(244, 247, 251, 0.16);
+  border-radius: 999px;
+  padding: 0 0.72rem;
+  background: rgba(16, 19, 26, 0.62);
+  color: rgba(244, 247, 251, 0.76);
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.connectionBadge.connected {
+  border-color: rgba(45, 212, 191, 0.36);
+  color: #99f6e4;
+}
+
+.connectionBadge.disconnected {
+  border-color: rgba(248, 113, 113, 0.36);
+  color: #fecaca;
+}
+
 .chatPanel {
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto auto;
@@ -136,6 +160,24 @@ input {
   align-items: end;
   justify-content: space-between;
   gap: 1rem;
+}
+
+.cycleButton {
+  display: inline-flex;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(244, 247, 251, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #f4f7fb;
+  cursor: pointer;
+}
+
+.cycleButton:hover {
+  border-color: rgba(45, 212, 191, 0.46);
+  color: #99f6e4;
 }
 
 .panelSection h1,
@@ -185,6 +227,12 @@ input {
   margin-top: 0.35rem;
   color: #f4f7fb;
   line-height: 1.45;
+}
+
+.cursor {
+  display: inline-block;
+  margin-left: 0.1rem;
+  color: #2dd4bf;
 }
 
 .events {
@@ -254,6 +302,11 @@ input {
   border-color: rgba(45, 212, 191, 0.72);
 }
 
+.composer input:disabled {
+  cursor: wait;
+  opacity: 0.66;
+}
+
 .composer button {
   display: inline-flex;
   width: 44px;
@@ -269,6 +322,11 @@ input {
 
 .composer button:hover {
   background: #5eead4;
+}
+
+.composer button:disabled {
+  cursor: wait;
+  opacity: 0.58;
 }
 
 @media (max-width: 860px) {
@@ -299,4 +357,3 @@ input {
     grid-column: 1 / -1;
   }
 }
-
