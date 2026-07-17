@@ -33,6 +33,9 @@ TERRAFORM_HEREDOC_START_RE = re.compile(r"<<-?\s*(?P<delimiter>[A-Za-z_][A-Za-z0
 YAML_SCOPE_RE = re.compile(r"^(?P<scope>trigger|pr|schedules)\s*:\s*(?:#.*)?$")
 YAML_PATHS_RE = re.compile(r"^\s*paths\s*:\s*(?:#.*)?$")
 YAML_LIST_ITEM_RE = re.compile(r"^\s*-\s*(?P<path>[^#\s][^#]*?)\s*(?:#.*)?$")
+YAML_AZURE_RESOURCES_RE = re.compile(
+    r"(?m)^resources\s*:\s*(?:#.*)?$\n(?:[ \t]*(?:#.*)?\n)*[ \t]+(?:repositories|pipelines|containers|packages|webhooks|builds)\s*:"
+)
 
 
 class OnboardingError(ValueError):
@@ -295,7 +298,7 @@ def _pipeline_yamls(root: Path, files: list[Path]) -> list[PipelineYamlInventory
         # Conventionally named pipeline files may consist only of a template/steps,
         # while other Azure definitions usually contain one of these root-level keys.
         conventional_name = "azure-pipelines" in path.name.lower()
-        azure_signature = re.search(r"(?m)^(trigger|pr|schedules|extends|pool|stages)\s*:", contents)
+        azure_signature = re.search(r"(?m)^(trigger|pr|schedules|extends|pool|stages)\s*:", contents) or YAML_AZURE_RESOURCES_RE.search(contents)
         if not conventional_name and not azure_signature:
             continue
         path_filters = [

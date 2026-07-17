@@ -194,6 +194,24 @@ def test_onboarding_ignores_kustomize_resources_manifest(tmp_path: Path) -> None
     assert response.json()["pipeline_yamls"] == []
 
 
+def test_onboarding_indexes_resource_only_azure_pipeline(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    (repository / "release.yml").write_text(
+        """resources:
+  repositories:
+    - repository: shared
+      type: git
+      name: platform/shared-pipeline
+"""
+    )
+
+    response = _client(tmp_path).post("/onboarding", json={"repository_path": str(repository)})
+
+    assert response.status_code == 201
+    assert response.json()["pipeline_yamls"] == [{"file_path": "release.yml", "path_filters": []}]
+
+
 def test_onboarding_parses_terraform_blocks_with_trailing_comments(tmp_path: Path) -> None:
     repository = tmp_path / "repository"
     repository.mkdir()
