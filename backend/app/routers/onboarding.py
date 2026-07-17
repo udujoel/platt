@@ -9,7 +9,10 @@ router = APIRouter(prefix="/onboarding", tags=["onboarding"])
 
 
 def _store(request: Request) -> OnboardingStore:
-    return request.app.state.onboarding_store
+    store = getattr(request.app.state, "onboarding_store", None)
+    if not isinstance(store, OnboardingStore):
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="onboarding store is unavailable")
+    return store
 
 
 @router.post("", response_model=OnboardingRecord, status_code=status.HTTP_201_CREATED)

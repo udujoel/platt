@@ -65,8 +65,18 @@ pr:
     assert record["pipeline_yamls"] == [
         {
             "file_path": "azure-pipelines.yml",
-            "include_paths": ["src/**", "infrastructure/**", "src/**"],
-            "exclude_paths": ["docs/**"],
+            "path_filters": [
+                {
+                    "scope": "trigger",
+                    "include_paths": ["src/**", "infrastructure/**"],
+                    "exclude_paths": ["docs/**"],
+                },
+                {
+                    "scope": "pr",
+                    "include_paths": ["src/**"],
+                    "exclude_paths": [],
+                },
+            ],
         }
     ]
 
@@ -91,8 +101,8 @@ def test_onboarding_rejects_non_absolute_or_missing_paths(tmp_path: Path) -> Non
     relative_response = client.post("/onboarding", json={"repository_path": "relative/repository"})
     missing_response = client.post("/onboarding", json={"repository_path": str(tmp_path / "missing")})
 
-    assert relative_response.status_code == 400
-    assert "absolute" in relative_response.json()["detail"]
+    assert relative_response.status_code == 422
+    assert "absolute" in relative_response.json()["detail"][0]["msg"]
     assert missing_response.status_code == 400
 
 
@@ -147,7 +157,7 @@ def test_onboarding_inventories_conventional_pipeline_file_without_a_trigger(tmp
 
     assert response.status_code == 201
     assert response.json()["pipeline_yamls"] == [
-        {"file_path": "azure-pipelines.release.yaml", "include_paths": [], "exclude_paths": []}
+        {"file_path": "azure-pipelines.release.yaml", "path_filters": []}
     ]
 
 
@@ -167,6 +177,54 @@ def test_onboarding_ignores_non_pipeline_yaml_with_nested_azure_keys(tmp_path: P
 
     assert response.status_code == 201
     assert response.json()["pipeline_yamls"] == []
+
+
+def test_onboarding_ignores_kustomize_resources_manifest(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    (repository / "kustomization.yaml").write_text(
+        """resources:
+  - deployment.yaml
+"""
+    )
+
+    response = _client(tmp_path).post("/onboarding", json={"repository_path": str(repository)})
+
+    assert response.status_code == 201
+    assert response.json()["pipeline_yamls"] == []
+
+
+def test_onboarding_parses_terraform_blocks_with_trailing_comments(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    (repository / "main.tf").write_text(
+        '''module "network" {
+  source = "../../modules/network"
+  providers = {
+    azurerm = azurerm.shared
+  }
+} # network module
+'''
+    )
+
+    response = _client(tmp_path).post("/onboarding", json={"repository_path": str(repository)})
+
+    assert response.status_code == 201
+    assert response.json()["terraform_modules"] == [
+        {"file_path": "main.tf", "name": "network", "source": "../../modules/network"}
+    ]
+
+
+def test_onboarding_rejects_oversized_parseable_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.services.onboarding.MAX_FILE_BYTES", 32)
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    (repository / "main.tf").write_text('module "network" {\n  source = "../../modules/network"\n}\n')
+
+    response = _client(tmp_path).post("/onboarding", json={"repository_path": str(repository)})
+
+    assert response.status_code == 400
+    assert "exceeds" in response.json()["detail"]
 
 
 def test_onboarding_returns_not_found_for_unknown_record(tmp_path: Path) -> None:

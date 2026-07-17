@@ -27,10 +27,9 @@ MAX_DIRECTORIES = 2_000
 MAX_FILE_BYTES = 1_000_000
 TRUSTED_ONBOARDING_ROOT_ENV = "PLATT_ONBOARDING_ROOT"
 IGNORED_DIRECTORY_NAMES = {".git", ".terraform", "node_modules", ".venv", "venv", "__pycache__"}
-TERRAFORM_MODULE_RE = re.compile(
-    r'(?ms)^\s*module\s+"(?P<name>[^"]+)"\s*\{(?P<body>.*?)^\s*\}'
-)
+TERRAFORM_MODULE_START_RE = re.compile(r'(?m)^\s*module\s+"(?P<name>[^"]+)"\s*\{')
 TERRAFORM_SOURCE_RE = re.compile(r'(?m)^\s*source\s*=\s*"(?P<source>[^"]+)"')
+YAML_SCOPE_RE = re.compile(r"^(?P<scope>trigger|pr|schedules)\s*:\s*(?:#.*)?$")
 YAML_PATHS_RE = re.compile(r"^\s*paths\s*:\s*(?:#.*)?$")
 YAML_LIST_ITEM_RE = re.compile(r"^\s*-\s*(?P<path>[^#\s][^#]*?)\s*(?:#.*)?$")
 
@@ -127,8 +126,6 @@ def _walk_files(root: Path) -> Iterator[Path]:
 
 def _read_text(path: Path) -> str | None:
     try:
-        if path.stat().st_size > MAX_FILE_BYTES:
-            return None
         return path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return None
@@ -145,41 +142,91 @@ def _inventory_files(root: Path, files: list[Path]) -> list[FileInventoryEntry]:
     return entries
 
 
+def _terraform_module_bodies(contents: str) -> Iterator[tuple[str, str]]:
+    """Yield module names and balanced block bodies without treating trailing comments as syntax."""
+    for match in TERRAFORM_MODULE_START_RE.finditer(contents):
+        opening_brace = match.end() - 1
+        depth = 0
+        quote: str | None = None
+        escaped = False
+        for index in range(opening_brace, len(contents)):
+            character = contents[index]
+            if quote:
+                if escaped:
+                    escaped = False
+                elif character == "\\":
+                    escaped = True
+                elif character == quote:
+                    quote = None
+                continue
+            if character in {"\"", "'"}:
+                quote = character
+            elif character == "{":
+                depth += 1
+            elif character == "}":
+                depth -= 1
+                if depth == 0:
+                    yield match.group("name"), contents[opening_brace + 1 : index]
+                    break
+
+
 def _terraform_modules(root: Path, files: list[Path]) -> list[TerraformModuleReference]:
     modules: list[TerraformModuleReference] = []
     for path in files:
         if path.suffix != ".tf":
             continue
+        if path.stat().st_size > MAX_FILE_BYTES:
+            raise OnboardingError(f"Terraform file exceeds the {MAX_FILE_BYTES} byte onboarding limit: {_relative_path(root, path)}")
         contents = _read_text(path)
         if contents is None:
             continue
-        for match in TERRAFORM_MODULE_RE.finditer(contents):
-            source = TERRAFORM_SOURCE_RE.search(match.group("body"))
+        for name, body in _terraform_module_bodies(contents):
+            source = TERRAFORM_SOURCE_RE.search(body)
             if source:
                 modules.append(
                     TerraformModuleReference(
                         file_path=_relative_path(root, path),
-                        name=match.group("name"),
+                        name=name,
                         source=source.group("source"),
                     )
                 )
     return modules
 
 
-def _yaml_path_filters(contents: str) -> tuple[list[str], list[str]]:
-    """Extract simple Azure Pipelines `paths` include/exclude lists without a YAML parser."""
-    includes: list[str] = []
-    excludes: list[str] = []
+def _yaml_path_filters(contents: str) -> list[tuple[str, list[str], list[str]]]:
+    """Extract distinct trigger, PR, and schedule `paths` lists without a YAML parser."""
+    filters: list[tuple[str, list[str], list[str]]] = []
+    scope: str | None = None
+    scope_indent: int | None = None
+    includes: list[str] | None = None
+    excludes: list[str] | None = None
     active: list[str] | None = None
     paths_indent: int | None = None
     for line in contents.splitlines():
+        scope_match = YAML_SCOPE_RE.match(line)
+        if scope_match:
+            scope = scope_match.group("scope")
+            scope_indent = len(line) - len(line.lstrip())
+            paths_indent = None
+            active = None
+            continue
+        indent = len(line) - len(line.lstrip())
+        if scope_indent is not None and line.strip() and indent <= scope_indent:
+            scope = None
+            scope_indent = None
+            paths_indent = None
+            active = None
+        if scope is None:
+            continue
         if YAML_PATHS_RE.match(line):
-            paths_indent = len(line) - len(line.lstrip())
+            paths_indent = indent
+            includes = []
+            excludes = []
+            filters.append((scope, includes, excludes))
             active = None
             continue
         if paths_indent is None:
             continue
-        indent = len(line) - len(line.lstrip())
         if line.strip() and indent <= paths_indent:
             paths_indent = None
             active = None
@@ -194,7 +241,7 @@ def _yaml_path_filters(contents: str) -> tuple[list[str], list[str]]:
         item = YAML_LIST_ITEM_RE.match(line)
         if item and active is not None:
             active.append(item.group("path").strip().strip('"\''))
-    return includes, excludes
+    return filters
 
 
 def _pipeline_yamls(root: Path, files: list[Path]) -> list[PipelineYamlInventory]:
@@ -202,21 +249,25 @@ def _pipeline_yamls(root: Path, files: list[Path]) -> list[PipelineYamlInventory
     for path in files:
         if path.suffix.lower() not in {".yml", ".yaml"}:
             continue
+        if path.stat().st_size > MAX_FILE_BYTES:
+            raise OnboardingError(f"Pipeline YAML exceeds the {MAX_FILE_BYTES} byte onboarding limit: {_relative_path(root, path)}")
         contents = _read_text(path)
         if contents is None:
             continue
         # Conventionally named pipeline files may consist only of a template/steps,
         # while other Azure definitions usually contain one of these root-level keys.
         conventional_name = "azure-pipelines" in path.name.lower()
-        azure_signature = re.search(r"(?m)^(trigger|pr|schedules|extends|pool|stages|resources)\s*:", contents)
+        azure_signature = re.search(r"(?m)^(trigger|pr|schedules|extends|pool|stages)\s*:", contents)
         if not conventional_name and not azure_signature:
             continue
-        include_paths, exclude_paths = _yaml_path_filters(contents)
+        path_filters = [
+            {"scope": scope, "include_paths": include_paths, "exclude_paths": exclude_paths}
+            for scope, include_paths, exclude_paths in _yaml_path_filters(contents)
+        ]
         inventories.append(
             PipelineYamlInventory(
                 file_path=_relative_path(root, path),
-                include_paths=include_paths,
-                exclude_paths=exclude_paths,
+                path_filters=path_filters,
             )
         )
     return inventories
