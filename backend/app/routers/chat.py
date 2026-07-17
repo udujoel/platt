@@ -1,8 +1,8 @@
-import asyncio
 from uuid import uuid4
 
 from fastapi import APIRouter, Request
 
+from app.background_tasks import create_background_task
 from app.event_bus import event_bus
 from app.jobs import stream_fake_chat_job
 from app.models import ChatRequest, ChatResponse, JobCreatedEvent
@@ -21,5 +21,5 @@ async def chat(request: Request, chat_request: ChatRequest) -> ChatResponse:
         outcome="accepted",
     )
     await event_bus.publish(JobCreatedEvent(job_id=job_id, prompt=chat_request.prompt))
-    asyncio.create_task(stream_fake_chat_job(job_id=job_id, bus=event_bus))
+    create_background_task(request.app, stream_fake_chat_job(job_id=job_id, bus=event_bus))
     return ChatResponse(job_id=job_id)

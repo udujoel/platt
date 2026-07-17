@@ -1,10 +1,12 @@
+import asyncio
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.background_tasks import cancel_background_tasks
 from app.event_bus import event_bus
 from app.persistence import Persistence
 from app.routers import audit, chat, dev, health, jobs, ws
@@ -19,10 +21,12 @@ def create_app(db_path: str | Path | None = None) -> FastAPI:
         persistence = Persistence(db_path=db_path)
         recorder = persistence.record_event
         app.state.persistence = persistence
+        app.state.background_tasks: set[asyncio.Task[Any]] = set()
         event_bus.set_recorder(recorder)
         try:
             yield
         finally:
+            await cancel_background_tasks(app.state.background_tasks)
             event_bus.clear_recorder(recorder)
             persistence.close()
 
@@ -31,9 +35,9 @@ def create_app(db_path: str | Path | None = None) -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origin_regex=LOCAL_VITE_ORIGIN_REGEX,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_credentials=False,
+        allow_methods=["GET", "POST"],
+        allow_headers=["Content-Type"],
     )
     app.include_router(health.router)
     app.include_router(chat.router)
