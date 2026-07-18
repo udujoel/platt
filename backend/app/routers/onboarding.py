@@ -1,6 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request, status
+from pydantic import ValidationError
 
 from app.models import (
     OnboardingRecord,
@@ -77,16 +78,23 @@ def list_repository_tools(request: Request, onboarding_id: UUID) -> list[Reposit
 def invoke_repository_tool(
     request: Request,
     onboarding_id: UUID,
-    invocation: RepositoryToolInvocation,
+    invocation: dict[str, object],
 ) -> RepositoryToolResponse:
     persistence = _persistence(request)
+    requested_tool = invocation.get("tool")
+    audit_tool = requested_tool if isinstance(requested_tool, str) and len(requested_tool) <= 64 else "unknown"
     try:
-        result = execute_repository_tool(_store(request).get(onboarding_id), invocation)
+        parsed_invocation = RepositoryToolInvocation.model_validate(invocation)
+    except ValidationError as error:
+        persistence.record_audit_entry(None, tool=f"repo.{audit_tool}", action="execute", outcome="rejected")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=error.errors()) from error
+    try:
+        result = execute_repository_tool(_store(request).get(onboarding_id), parsed_invocation)
     except OnboardingNotFoundError as error:
-        persistence.record_audit_entry(None, tool=f"repo.{invocation.tool}", action="execute", outcome="not_found")
+        persistence.record_audit_entry(None, tool=f"repo.{parsed_invocation.tool}", action="execute", outcome="not_found")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="onboarding record or inventory path not found") from error
     except OnboardingError as error:
-        persistence.record_audit_entry(None, tool=f"repo.{invocation.tool}", action="execute", outcome="rejected")
+        persistence.record_audit_entry(None, tool=f"repo.{parsed_invocation.tool}", action="execute", outcome="rejected")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
-    persistence.record_audit_entry(None, tool=f"repo.{invocation.tool}", action="execute", outcome="succeeded")
+    persistence.record_audit_entry(None, tool=f"repo.{parsed_invocation.tool}", action="execute", outcome="succeeded")
     return result

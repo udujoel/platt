@@ -266,9 +266,26 @@ def test_repository_grep_marks_results_truncated_at_its_read_budget(tmp_path: Pa
     assert response.status_code == 200
     assert response.json()["result"] == {
         "matches": [{"path": "a.txt", "line_number": 1, "line": "needle"}],
-        "scanned_files": 1,
+        "scanned_files": 2,
         "truncated": True,
     }
+
+
+def test_repository_tools_audit_validation_rejections(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+
+    with _client(tmp_path) as client:
+        created = client.post("/onboarding", json={"repository_path": str(repository)})
+        assert created.status_code == 201
+        rejected = client.post(
+            f"/onboarding/{created.json()['id']}/tools/invoke",
+            json={"tool": "write_file", "arguments": {}},
+        )
+        audit = client.get("/audit")
+
+    assert rejected.status_code == 422
+    assert any(entry["tool"] == "repo.write_file" and entry["outcome"] == "rejected" for entry in audit.json()["entries"])
 
 
 def test_repository_glob_marks_results_truncated_at_its_path_budget(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

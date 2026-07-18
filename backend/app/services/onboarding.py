@@ -10,6 +10,7 @@ import json
 import os
 import re
 import sqlite3
+import stat
 from collections import deque
 from collections.abc import Iterator
 from datetime import datetime, timezone
@@ -409,21 +410,40 @@ def _tool_argument(arguments: dict[str, str], name: str, max_length: int) -> str
     return value
 
 
-def _inventoried_file(root: Path, inventory_paths: set[str], requested_path: str) -> tuple[str, Path]:
+def _open_inventoried_file(root: Path, inventory_paths: set[str], requested_path: str) -> tuple[str, int]:
     relative_path = PurePosixPath(requested_path)
     if relative_path.is_absolute() or not relative_path.parts or ".." in relative_path.parts:
         raise OnboardingError("file path must be a relative inventory path")
     normalized_path = relative_path.as_posix()
     if normalized_path not in inventory_paths:
         raise OnboardingNotFoundError(normalized_path)
-    path = root.joinpath(*relative_path.parts)
+    directory_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
     try:
-        resolved_path = path.resolve(strict=True)
-    except OSError as error:
+        for part in relative_path.parts[:-1]:
+            next_directory_fd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory_fd)
+            os.close(directory_fd)
+            directory_fd = next_directory_fd
+        file_fd = os.open(relative_path.parts[-1], os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory_fd)
+    except FileNotFoundError as error:
         raise OnboardingNotFoundError(normalized_path) from error
-    if path.is_symlink() or not path.is_file() or not _is_within(root, resolved_path):
+    except OSError as error:
+        raise OnboardingError("inventory path no longer resolves to a regular file") from error
+    finally:
+        os.close(directory_fd)
+    if not stat.S_ISREG(os.fstat(file_fd).st_mode):
+        os.close(file_fd)
         raise OnboardingError("inventory path no longer resolves to a regular file")
-    return normalized_path, path
+    return normalized_path, file_fd
+
+
+def _read_inventoried_bytes(root: Path, inventory_paths: set[str], requested_path: str, max_bytes: int) -> tuple[str, bytes, bool]:
+    normalized_path, file_fd = _open_inventoried_file(root, inventory_paths, requested_path)
+    try:
+        with os.fdopen(file_fd, "rb") as file:
+            contents = file.read(max_bytes + 1)
+    except OSError as error:
+        raise OnboardingError("inventory path could not be read") from error
+    return normalized_path, contents[:max_bytes], len(contents) > max_bytes
 
 
 def _matches_glob(path: str, pattern: str) -> bool:
@@ -437,13 +457,12 @@ def execute_repository_tool(record: OnboardingRecord, invocation: RepositoryTool
 
     if invocation.tool == "read_file":
         requested_path = _tool_argument(invocation.arguments, "path", 4096)
-        normalized_path, path = _inventoried_file(root, inventory_paths, requested_path)
-        contents = _read_bounded_text(root, path, "repository file")
-        if contents is None:
-            raise OnboardingNotFoundError(normalized_path)
+        normalized_path, contents, truncated = _read_inventoried_bytes(root, inventory_paths, requested_path, MAX_FILE_BYTES)
+        if truncated:
+            raise OnboardingError(f"repository file exceeds the {MAX_FILE_BYTES} byte onboarding limit: {normalized_path}")
         return RepositoryToolResponse(
             tool=invocation.tool,
-            result=RepositoryFileReadResult(path=normalized_path, content=contents),
+            result=RepositoryFileReadResult(path=normalized_path, content=contents.decode("utf-8", errors="replace")),
         )
 
     if invocation.tool == "glob":
@@ -462,18 +481,21 @@ def execute_repository_tool(record: OnboardingRecord, invocation: RepositoryTool
     scanned_files = 0
     scanned_bytes = 0
     for entry in sorted(record.files, key=lambda item: item.path):
-        if scanned_bytes + entry.size_bytes > MAX_GREP_BYTES:
+        remaining_bytes = MAX_GREP_BYTES - scanned_bytes
+        if remaining_bytes <= 0:
             return RepositoryToolResponse(
                 tool=invocation.tool,
                 result=RepositoryGrepResult(matches=matches, scanned_files=scanned_files, truncated=True),
             )
-        normalized_path, path = _inventoried_file(root, inventory_paths, entry.path)
-        contents = _read_bounded_text(root, path, "repository file")
-        if contents is None:
-            raise OnboardingNotFoundError(normalized_path)
+        normalized_path, contents, truncated = _read_inventoried_bytes(root, inventory_paths, entry.path, remaining_bytes)
         scanned_files += 1
-        scanned_bytes += entry.size_bytes
-        for line_number, line in enumerate(contents.splitlines(), start=1):
+        scanned_bytes += len(contents)
+        if truncated:
+            return RepositoryToolResponse(
+                tool=invocation.tool,
+                result=RepositoryGrepResult(matches=matches, scanned_files=scanned_files, truncated=True),
+            )
+        for line_number, line in enumerate(contents.decode("utf-8", errors="replace").splitlines(), start=1):
             if query not in line:
                 continue
             matches.append(RepositorySearchMatch(path=normalized_path, line_number=line_number, line=line[:MAX_GREP_LINE_CHARS]))
