@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from threading import Event as ThreadEvent
 from threading import Thread
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -68,11 +68,19 @@ def test_persistence_migrates_legacy_jobs_for_onboarding_binding(tmp_path) -> No
             )
             """
         )
+        legacy_job_id = str(uuid4())
+        connection.execute(
+            "insert into jobs (id, prompt, status) values (?, ?, ?)",
+            (legacy_job_id, "Legacy plan", "accepted"),
+        )
 
     persistence = Persistence(db_path)
     job_id = uuid4()
     onboarding_id = uuid4()
     try:
+        legacy_job = persistence.get_job(UUID(legacy_job_id))
+        assert legacy_job is not None
+        assert legacy_job["onboarding_id"] is None
         persistence.record_job(job_id, prompt="Bound plan", onboarding_id=onboarding_id)
         assert persistence.get_job(job_id)["onboarding_id"] == str(onboarding_id)
     finally:
