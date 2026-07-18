@@ -45,6 +45,8 @@ completed 3D implementation.
   audit event are attached to that original plan job. Completed steps now also
   record a bounded, content-free receipt in its persisted event history, so the
   original action remains inspectable after the transient UI result is gone.
+  The plan job is bound to its originating onboarding record before it can
+  authorize a step, preventing a plan from one checkout from reading another.
   Arbitrary tool input and automatic execution remain unavailable.
 - Added a bounded persisted-event recovery window with deterministic ordering;
   the local client uses capped retry backoff and rehydrates that window after a

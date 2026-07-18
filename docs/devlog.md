@@ -3,6 +3,14 @@
 This is the concise, human-readable record of validated delivery decisions.
 Detailed implementation and release notes belong in the PR and changelog.
 
+## 2026-07-18 — Repository-bound plan execution
+
+- Repository-review jobs now persist the onboarding record that created them,
+  including a lightweight migration for existing local SQLite job tables.
+- Step execution rejects a plan job when its recorded checkout does not match
+  the request, preventing a plan prepared for one local repository from being
+  reused against another.
+
 ## 2026-07-18 — Persisted read-only execution receipts
 
 - Completed repository-review plan steps now emit a bounded receipt into the

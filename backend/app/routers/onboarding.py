@@ -121,7 +121,7 @@ async def prepare_repository_review_plan(request: Request, onboarding_id: UUID) 
     plan = repository_inspection_plan(record)
     job_id = uuid4()
     persistence = _persistence(request)
-    persistence.record_job(job_id=job_id, prompt=REPOSITORY_REVIEW_PLAN_PROMPT)
+    persistence.record_job(job_id=job_id, prompt=REPOSITORY_REVIEW_PLAN_PROMPT, onboarding_id=record.id)
     persistence.record_audit_entry(job_id=job_id, tool="onboarding_plan", action="create_plan", outcome="accepted")
     await event_bus.publish(JobCreatedEvent(job_id=job_id, prompt=REPOSITORY_REVIEW_PLAN_PROMPT))
     await event_bus.publish(PlanReadyEvent(job_id=job_id, summary=plan.summary))
@@ -145,7 +145,11 @@ async def execute_repository_review_plan_step(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="onboarding record not found") from error
     persistence = _persistence(request)
     job = persistence.get_job(job_id)
-    if job is None or job["prompt"] != REPOSITORY_REVIEW_PLAN_PROMPT:
+    if (
+        job is None
+        or job["prompt"] != REPOSITORY_REVIEW_PLAN_PROMPT
+        or job["onboarding_id"] != str(record.id)
+    ):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="repository review plan job not found")
     step = next((candidate for candidate in repository_inspection_plan(record).steps if candidate.id == step_id), None)
     if step is None:

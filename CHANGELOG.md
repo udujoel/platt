@@ -21,6 +21,8 @@ patch version.
 - Content-free execution receipts for completed repository-plan steps, saved
   with their original job event history so operators can inspect returned byte,
   path, or match counts without persisting repository content.
+- Repository-review plan jobs now record their originating onboarding record
+  and reject attempts to execute the plan against a different checkout.
 - Automated frontend retry-policy coverage, including exponential backoff,
   capped delays, and stable-connection resets, enforced in CI.
 - A validated `PLATT_ALLOWED_ORIGIN_REGEX` backend setting for explicit API
