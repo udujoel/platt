@@ -22,8 +22,8 @@ patch version.
   capped delays, and stable-connection resets, enforced in CI.
 - A validated `PLATT_ALLOWED_ORIGIN_REGEX` backend setting for explicit API
   origins, while retaining the safe local-Vite-only default.
-- Browser WebSockets now enforce that same approved-origin policy before a
-  connection is accepted.
+- Browser WebSockets now enforce that same approved-origin policy before they
+  subscribe or receive event data.
 
 ## [0.1.1] — 2026-07-18
 

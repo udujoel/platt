@@ -95,8 +95,16 @@ def test_create_app_rejects_invalid_allowed_origin_regex() -> None:
 
 def test_websocket_rejects_disallowed_origin(client: TestClient) -> None:
     with pytest.raises(WebSocketDisconnect) as error:
-        with client.websocket_connect("/ws", headers={"Origin": "https://example.com"}):
-            pass
+        with client.websocket_connect("/ws", headers={"Origin": "https://example.com"}) as websocket:
+            websocket.receive_json()
+
+    assert error.value.code == 1008
+
+
+def test_websocket_rejects_missing_origin(client: TestClient) -> None:
+    with pytest.raises(WebSocketDisconnect) as error:
+        with client.websocket_connect("/ws") as websocket:
+            websocket.receive_json()
 
     assert error.value.code == 1008
 
@@ -388,10 +396,11 @@ def test_websocket_delivery_survives_recorder_failure(client: TestClient) -> Non
 
 def test_websocket_cancellation_propagates(monkeypatch) -> None:
     class Websocket:
-        headers = {"origin": "http://127.0.0.1:5175"}
-        app = SimpleNamespace(
-            state=SimpleNamespace(allowed_origin_pattern=re.compile(LOCAL_VITE_ORIGIN_REGEX))
-        )
+        def __init__(self) -> None:
+            self.headers = {"origin": "http://127.0.0.1:5175"}
+            self.app = SimpleNamespace(
+                state=SimpleNamespace(allowed_origin_pattern=re.compile(LOCAL_VITE_ORIGIN_REGEX))
+            )
 
         async def accept(self) -> None:
             return None
@@ -408,11 +417,12 @@ def test_websocket_cancellation_propagates(monkeypatch) -> None:
 
 def test_websocket_send_race_with_closed_transport_is_a_normal_disconnect(monkeypatch) -> None:
     class Websocket:
-        accepted = False
-        headers = {"origin": "http://127.0.0.1:5175"}
-        app = SimpleNamespace(
-            state=SimpleNamespace(allowed_origin_pattern=re.compile(LOCAL_VITE_ORIGIN_REGEX))
-        )
+        def __init__(self) -> None:
+            self.accepted = False
+            self.headers = {"origin": "http://127.0.0.1:5175"}
+            self.app = SimpleNamespace(
+                state=SimpleNamespace(allowed_origin_pattern=re.compile(LOCAL_VITE_ORIGIN_REGEX))
+            )
 
         async def accept(self) -> None:
             self.accepted = True
