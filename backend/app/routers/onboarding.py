@@ -30,6 +30,7 @@ from app.services.onboarding import (
     inspect_repository,
     onboarding_system_prompt,
     repository_inspection_plan,
+    repository_tool_result_summary,
     repository_tool_definitions,
     trace_module,
 )
@@ -164,7 +165,16 @@ async def execute_repository_review_plan_step(
         await event_bus.publish(AuditEntryEvent(job_id=job_id, tool=audit_tool, action="execute_plan_step", outcome="rejected"))
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
     persistence.record_audit_entry(job_id, tool=audit_tool, action="execute_plan_step", outcome="succeeded")
-    await event_bus.publish(AuditEntryEvent(job_id=job_id, tool=audit_tool, action="execute_plan_step", outcome="succeeded"))
+    await event_bus.publish(
+        AuditEntryEvent(
+            job_id=job_id,
+            tool=audit_tool,
+            action="execute_plan_step",
+            outcome="succeeded",
+            step_id=step.id,
+            summary=repository_tool_result_summary(result),
+        )
+    )
     return result
 
 

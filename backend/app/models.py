@@ -106,6 +106,8 @@ class AuditEntryEvent(JobEvent):
     tool: str
     action: str
     outcome: str
+    step_id: str | None = Field(default=None, max_length=128)
+    summary: str | None = Field(default=None, max_length=512)
 
 
 class DashboardRefreshEvent(EventBase):

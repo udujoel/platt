@@ -1,10 +1,22 @@
+import json
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-from app.services.onboarding import inspect_repository, onboarding_system_prompt, repository_inspection_plan
+from app.models import (
+    RepositoryFileReadResult,
+    RepositoryGlobResult,
+    RepositoryGrepResult,
+    RepositoryToolResponse,
+)
+from app.services.onboarding import (
+    inspect_repository,
+    onboarding_system_prompt,
+    repository_inspection_plan,
+    repository_tool_result_summary,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -342,6 +354,45 @@ def test_repository_review_plan_executes_one_listed_step_and_audits_its_job(tmp_
         ("repo.read_file", "execute_plan_step", "succeeded"),
     }
     assert [event["type"] for event in events.json()["events"]] == ["job_created", "plan_ready", "audit_entry"]
+    receipt = events.json()["events"][-1]
+    assert receipt["payload"]
+    assert {
+        key: value
+        for key, value in json.loads(receipt["payload"]).items()
+        if key in {"tool", "action", "outcome", "step_id", "summary"}
+    } == {
+        "tool": "repo.read_file",
+        "action": "execute_plan_step",
+        "outcome": "succeeded",
+        "step_id": "provider-constraints",
+        "summary": "Read versions.tf; returned 42 bytes.",
+    }
+
+
+@pytest.mark.parametrize(
+    ("response", "expected"),
+    [
+        (
+            RepositoryToolResponse(tool="read_file", result=RepositoryFileReadResult(path="main.tf", content="é")),
+            "Read main.tf; returned 2 bytes.",
+        ),
+        (
+            RepositoryToolResponse(tool="glob", result=RepositoryGlobResult(paths=["a.tf", "b.tf"], truncated=True)),
+            "Listed 2 inventory paths; result was truncated.",
+        ),
+        (
+            RepositoryToolResponse(
+                tool="grep",
+                result=RepositoryGrepResult(matches=[], scanned_files=7, truncated=True),
+            ),
+            "Found 0 matches while scanning 7 inventory files; result was truncated.",
+        ),
+    ],
+)
+def test_repository_tool_result_summary_is_content_free_and_bounded(
+    response: RepositoryToolResponse, expected: str
+) -> None:
+    assert repository_tool_result_summary(response) == expected
 
 
 def test_repository_review_plan_only_uses_persisted_inventory_paths(tmp_path: Path) -> None:

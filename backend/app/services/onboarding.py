@@ -426,6 +426,21 @@ def repository_tool_definitions() -> list[RepositoryToolDefinition]:
     return [definition.model_copy(deep=True) for definition in REPOSITORY_TOOL_DEFINITIONS]
 
 
+def repository_tool_result_summary(response: RepositoryToolResponse) -> str:
+    """Return a bounded, content-free receipt for a completed repository tool."""
+
+    result = response.result
+    if isinstance(result, RepositoryFileReadResult):
+        return f"Read {result.path}; returned {len(result.content.encode('utf-8'))} bytes."
+    if isinstance(result, RepositoryGlobResult):
+        summary = f"Listed {len(result.paths)} inventory paths."
+    elif isinstance(result, RepositoryGrepResult):
+        summary = f"Found {len(result.matches)} matches while scanning {result.scanned_files} inventory files."
+    else:  # The response union is closed; retain a safe fallback for future tool types.
+        return "Completed a bounded repository read."
+    return f"{summary[:-1]}; result was truncated." if result.truncated else summary
+
+
 def repository_inspection_plan(record: OnboardingRecord) -> RepositoryInspectionPlan:
     """Create, but never execute, a deterministic review plan from persisted facts."""
     inventory_paths = {entry.path for entry in record.files}

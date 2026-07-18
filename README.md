@@ -58,6 +58,9 @@ Implemented:
   subsequent chat requests to that onboarding record. Preparing the preview
   records an audit event but does not run its listed tools; an operator may
   explicitly run one proposed read-only step and inspect its bounded result.
+  Each completed plan step also saves a content-free receipt in the original
+  job history (for example, returned byte, path, or match counts and whether a
+  result was truncated), without persisting repository contents.
 - A reconnecting local event client with capped retry backoff. After a socket
   reconnect, it recovers a bounded, persisted event window in stable order and
   de-duplicates it against live delivery.

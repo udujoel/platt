@@ -53,7 +53,7 @@ type BackendEvent =
   | (JobEvent & { type: "approval_required"; job_id: string; approval_id: string; summary: string })
   | (JobEvent & { type: "approval_result"; job_id: string; approval_id: string; approved: boolean })
   | (JobEvent & { type: "apply_result"; job_id: string; success: boolean; summary: string })
-  | (JobEvent & { type: "audit_entry"; job_id: string; tool: string; action: string; outcome: string })
+  | (JobEvent & { type: "audit_entry"; job_id: string; tool: string; action: string; outcome: string; step_id?: string | null; summary?: string | null })
   | (EventBase & { type: "dashboard_refresh"; metrics: Record<string, string | number> });
 
 type EventEntry = {
@@ -220,7 +220,12 @@ function parseBackendEvent(value: unknown): BackendEvent | null {
     case "apply_result":
       return hasJobId(value) && typeof value.success === "boolean" && hasString(value, "summary") ? (value as BackendEvent) : null;
     case "audit_entry":
-      return hasJobId(value) && ["tool", "action", "outcome"].every((key) => hasString(value, key)) ? (value as BackendEvent) : null;
+      return hasJobId(value)
+        && ["tool", "action", "outcome"].every((key) => hasString(value, key))
+        && (value.step_id === undefined || value.step_id === null || typeof value.step_id === "string")
+        && (value.summary === undefined || value.summary === null || typeof value.summary === "string")
+        ? (value as BackendEvent)
+        : null;
     case "dashboard_refresh":
       return isRecord(value.metrics) && Object.values(value.metrics).every((metric) => typeof metric === "string" || typeof metric === "number") ? (value as BackendEvent) : null;
     default:
@@ -779,7 +784,10 @@ function describePersistedEvent(event: PersistedJobEvent) {
     case "approval_result":
       return { title: "Approval recorded", detail: payload.approved ? "Approved" : "Not approved" };
     case "audit_entry":
-      return { title: `${String(payload.tool ?? "Tool")} · ${String(payload.action ?? "action")}`, detail: String(payload.outcome ?? "") };
+      return {
+        title: `${String(payload.tool ?? "Tool")} · ${String(payload.action ?? "action")}`,
+        detail: [String(payload.outcome ?? ""), typeof payload.summary === "string" ? payload.summary : ""].filter(Boolean).join(" — "),
+      };
     default:
       return { title: event.type.replace(/_/g, " "), detail: "Backend event recorded" };
   }
