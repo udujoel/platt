@@ -8,6 +8,7 @@ from app.event_bus import event_bus
 from app.jobs import stream_chat_job
 from app.llm import create_llm_from_environment
 from app.models import (
+    AuditEntryEvent,
     ChatRequest,
     ChatResponse,
     JobCreatedEvent,
@@ -34,6 +35,7 @@ from app.services.onboarding import (
 )
 
 router = APIRouter(prefix="/onboarding", tags=["onboarding"])
+REPOSITORY_REVIEW_PLAN_PROMPT = "Prepare a read-only repository review plan."
 
 
 def _store(request: Request) -> OnboardingStore:
@@ -118,12 +120,52 @@ async def prepare_repository_review_plan(request: Request, onboarding_id: UUID) 
     plan = repository_inspection_plan(record)
     job_id = uuid4()
     persistence = _persistence(request)
-    prompt = "Prepare a read-only repository review plan."
-    persistence.record_job(job_id=job_id, prompt=prompt)
+    persistence.record_job(job_id=job_id, prompt=REPOSITORY_REVIEW_PLAN_PROMPT)
     persistence.record_audit_entry(job_id=job_id, tool="onboarding_plan", action="create_plan", outcome="accepted")
-    await event_bus.publish(JobCreatedEvent(job_id=job_id, prompt=prompt))
+    await event_bus.publish(JobCreatedEvent(job_id=job_id, prompt=REPOSITORY_REVIEW_PLAN_PROMPT))
     await event_bus.publish(PlanReadyEvent(job_id=job_id, summary=plan.summary))
     return RepositoryInspectionPlanResponse(job_id=job_id, plan=plan)
+
+
+@router.post(
+    "/{onboarding_id}/plans/repository-review/{job_id}/steps/{step_id}",
+    response_model=RepositoryToolResponse,
+)
+async def execute_repository_review_plan_step(
+    request: Request,
+    onboarding_id: UUID,
+    job_id: UUID,
+    step_id: str,
+) -> RepositoryToolResponse:
+    """Execute one explicit, pre-planned read-only tool step and audit its outcome."""
+    try:
+        record = _store(request).get(onboarding_id)
+    except OnboardingNotFoundError as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="onboarding record not found") from error
+    persistence = _persistence(request)
+    job = persistence.get_job(job_id)
+    if job is None or job["prompt"] != REPOSITORY_REVIEW_PLAN_PROMPT:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="repository review plan job not found")
+    step = next((candidate for candidate in repository_inspection_plan(record).steps if candidate.id == step_id), None)
+    if step is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="repository review plan step not found")
+    audit_tool = f"repo.{step.tool}"
+    try:
+        result = execute_repository_tool(
+            record,
+            RepositoryToolInvocation(tool=step.tool, arguments=step.arguments),
+        )
+    except OnboardingNotFoundError as error:
+        persistence.record_audit_entry(job_id, tool=audit_tool, action="execute_plan_step", outcome="not_found")
+        await event_bus.publish(AuditEntryEvent(job_id=job_id, tool=audit_tool, action="execute_plan_step", outcome="not_found"))
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="repository review inventory path not found") from error
+    except OnboardingError as error:
+        persistence.record_audit_entry(job_id, tool=audit_tool, action="execute_plan_step", outcome="rejected")
+        await event_bus.publish(AuditEntryEvent(job_id=job_id, tool=audit_tool, action="execute_plan_step", outcome="rejected"))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+    persistence.record_audit_entry(job_id, tool=audit_tool, action="execute_plan_step", outcome="succeeded")
+    await event_bus.publish(AuditEntryEvent(job_id=job_id, tool=audit_tool, action="execute_plan_step", outcome="succeeded"))
+    return result
 
 
 @router.get("/{onboarding_id}/tools", response_model=list[RepositoryToolDefinition])

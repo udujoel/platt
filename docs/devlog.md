@@ -3,6 +3,15 @@
 This is the concise, human-readable record of validated delivery decisions.
 Detailed implementation and release notes belong in the PR and changelog.
 
+## 2026-07-18 — Explicit planned read-only execution
+
+- An operator can now run an individual proposed review-plan step from the
+  onboarding panel. The API recomputes the bounded plan, accepts only a listed
+  step belonging to the original plan job, and persists its successful or
+  refused outcome in that job's audit trail.
+- No plan step runs automatically, accepts arbitrary tool arguments, or changes
+  a repository, cloud account, pipeline, or other remote system.
+
 ## 2026-07-18 — Ordered event recovery after a local reconnect
 
 - Added a read-only, bounded recent-event replay endpoint and made persistence

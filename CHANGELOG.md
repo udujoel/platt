@@ -16,6 +16,8 @@ patch version.
   inputs and expected outputs without executing a tool.
 - A bounded recent-event replay endpoint and reconnecting local client that
   recover persisted event history in stable order without duplicate rendering.
+- Explicit per-step execution for pre-planned read-only repository work, with
+  bounded results and audit events linked to the original plan job.
 
 ## [0.1.1] — 2026-07-18
 
