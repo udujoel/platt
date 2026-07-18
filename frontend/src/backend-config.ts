@@ -49,11 +49,16 @@ export function resolveBackendConfiguration({
   }
 
   if (hostedWithoutEndpoints) {
+    const missingVariables = [
+      apiBaseUrl ? null : "VITE_API_BASE_URL",
+      wsUrl ? null : "VITE_WS_URL",
+    ].filter((value): value is string => value !== null);
+
     return {
       apiBaseUrl: resolvedApiBaseUrl,
       wsUrl: resolvedWsUrl,
       isConfigured: false,
-      message: "This hosted Platt build needs both VITE_API_BASE_URL and VITE_WS_URL before it can connect to a backend.",
+      message: `This hosted Platt build needs ${missingVariables.join(" and ")} before it can connect to a backend.`,
     };
   }
 

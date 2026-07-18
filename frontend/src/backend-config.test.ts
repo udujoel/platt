@@ -16,6 +16,28 @@ describe("resolveBackendConfiguration", () => {
 
     expect(configuration.isConfigured).toBe(false);
     expect(configuration.message).toContain("VITE_API_BASE_URL");
+    expect(configuration.message).toContain("VITE_WS_URL");
+  });
+
+  it.each([
+    {
+      name: "API URL",
+      configuration: { apiBaseUrl: "https://api.platt.example.com" },
+      missingVariable: "VITE_WS_URL",
+    },
+    {
+      name: "WebSocket URL",
+      configuration: { wsUrl: "wss://api.platt.example.com/ws" },
+      missingVariable: "VITE_API_BASE_URL",
+    },
+  ])("blocks a hosted frontend with only an $name", ({ configuration, missingVariable }) => {
+    const resolved = resolveBackendConfiguration({
+      frontendHostname: "platt.example.com",
+      ...configuration,
+    });
+
+    expect(resolved.isConfigured).toBe(false);
+    expect(resolved.message).toContain(missingVariable);
   });
 
   it("accepts an explicitly configured hosted backend", () => {
@@ -28,14 +50,25 @@ describe("resolveBackendConfiguration", () => {
     ).toMatchObject({ isConfigured: true, message: null });
   });
 
-  it("rejects unsupported endpoint protocols", () => {
+  it("rejects an unsupported API protocol", () => {
     const configuration = resolveBackendConfiguration({
       frontendHostname: "platt.example.com",
       apiBaseUrl: "file:///private/api",
-      wsUrl: "https://api.platt.example.com/ws",
+      wsUrl: "wss://api.platt.example.com/ws",
     });
 
     expect(configuration.isConfigured).toBe(false);
     expect(configuration.message).toContain("http(s)");
+  });
+
+  it("rejects an unsupported WebSocket protocol", () => {
+    const configuration = resolveBackendConfiguration({
+      frontendHostname: "platt.example.com",
+      apiBaseUrl: "https://api.platt.example.com",
+      wsUrl: "https://api.platt.example.com/ws",
+    });
+
+    expect(configuration.isConfigured).toBe(false);
+    expect(configuration.message).toContain("ws(s)");
   });
 });
