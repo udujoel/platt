@@ -9,7 +9,7 @@ real system needs their decision.
 
 ## Current product boundary
 
-Version `0.2.0` is a locally validated Phase 1 slice. It has a typed streaming
+Version `0.2.0` is the latest locally validated Phase 1 release. It has a typed streaming
 event contract, persisted audit/job records, bounded local repository
 onboarding and review-plan controls, and a React/Vite interface with an
 animated 2D office stage. The 2D stage remains the supported v0.x embodiment.
@@ -19,6 +19,11 @@ release.** It is not optional polish and must keep the existing event-state
 contract, provide a reduced-motion/accessibility fallback, and be verified in
 the deployed product. No v0.x work may represent the current CSS stage as a
 completed 3D implementation.
+
+The first 1.0 foundation is now in progress: a procedural R3F office and
+character rig is selected only for WebGL-capable browsers without a
+reduced-motion preference. It uses the same event-state contract and defers its
+renderer chunk; it is not yet the verified, production-ready 1.0 release.
 
 ## Delivery sequence
 
@@ -84,6 +89,10 @@ completed 3D implementation.
 
 ### 1.0 — 3D embodied Platt
 
+- Started the accessible foundation with a state-driven R3F office and
+  character rig, plus a tested 2D fallback for reduced-motion and non-WebGL
+  browsers. The R3F code is lazy-loaded so it does not inflate the default
+  frontend bundle.
 - Ship the mandatory R3F character and state rig, driven by the same truthful
   job/event state as the 2D implementation.
 - Preserve keyboard operation, readable status/audit views, reduced-motion

@@ -7,6 +7,14 @@ patch version.
 
 ## Unreleased
 
+### Added
+
+- A lazy-loaded React Three Fiber office scene with a procedural Platt rig,
+  monitor, desk, board, server rack, plant, and state-driven lighting/poses.
+- Capability-based renderer selection: WebGL-capable browsers without a
+  reduced-motion preference use the 3D scene, while the existing 2D office
+  remains the tested accessibility and non-WebGL fallback.
+
 ## [0.2.0] — 2026-07-18
 
 ### Added

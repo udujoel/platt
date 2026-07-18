@@ -10,6 +10,29 @@ import { createBackendReadinessPoller } from "./readiness-status";
 import type { BackendReadiness } from "./readiness-status";
 import { describePersistedEvent } from "./job-event-description";
 import type { PersistedJobEvent } from "./job-event-description";
+import { selectStageRenderer } from "./stage-renderer";
+import type { StageRenderer } from "./stage-renderer";
+
+const ThreeOfficeScene = React.lazy(() => import("./three-office-scene").then(({ ThreeOfficeScene: Scene }) => ({ default: Scene })));
+
+class ThreeOfficeSceneBoundary extends React.Component<
+  { children: React.ReactNode; fallback: React.ReactNode; onFailure: () => void },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch() {
+    this.props.onFailure();
+  }
+
+  render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
+}
 
 type PlattState =
   | "idle"
@@ -22,6 +45,34 @@ type PlattState =
   | "concerned";
 
 type ConnectionState = "connecting" | "connected" | "disconnected";
+
+function browserSupportsWebGL() {
+  try {
+    return Boolean(document.createElement("canvas").getContext("webgl"));
+  } catch {
+    return false;
+  }
+}
+
+function useStageRenderer(): [StageRenderer, () => void] {
+  const [renderer, setRenderer] = React.useState<StageRenderer>("fallback");
+
+  React.useEffect(() => {
+    const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const refreshRenderer = () => {
+      setRenderer(selectStageRenderer({
+        prefersReducedMotion: motionQuery.matches,
+        supportsWebGL: browserSupportsWebGL(),
+      }));
+    };
+
+    refreshRenderer();
+    motionQuery.addEventListener("change", refreshRenderer);
+    return () => motionQuery.removeEventListener("change", refreshRenderer);
+  }, []);
+
+  return [renderer, () => setRenderer("fallback")];
+}
 
 type EventBase = {
   id: string;
@@ -538,6 +589,7 @@ function Stage({ readiness }: { readiness: BackendReadiness }) {
   const state = useEventStore((store) => store.state);
   const connection = useEventStore((store) => store.connection);
   const messages = useEventStore((store) => store.messages);
+  const [renderer, useFallback] = useStageRenderer();
   const latestPlattMessage = [...messages].reverse().find((message) => message.author === "platt")?.text ?? "";
 
   return (
@@ -546,8 +598,15 @@ function Stage({ readiness }: { readiness: BackendReadiness }) {
         <StatusChip state={state} />
         <span className={`connectionBadge ${connection}`}>{connection}</span>
         <span className={`readinessBadge ${readiness}`} aria-live="polite">backend {readiness}</span>
+        <span className={`stageRendererBadge ${renderer}`}>{renderer === "three" ? "3D scene" : "2D fallback"}</span>
       </div>
-      <OfficeScene state={state} speech={latestPlattMessage} />
+      {renderer === "three" ? (
+        <ThreeOfficeSceneBoundary fallback={<OfficeScene state={state} speech={latestPlattMessage} />} onFailure={useFallback}>
+          <React.Suspense fallback={<OfficeScene state={state} speech={latestPlattMessage} />}>
+            <ThreeOfficeScene state={state} speech={latestPlattMessage} />
+          </React.Suspense>
+        </ThreeOfficeSceneBoundary>
+      ) : <OfficeScene state={state} speech={latestPlattMessage} />}
       <div className="stageFooter">
         <span>Platt · embodied DevOps agent</span>
         <span>Live event projection</span>

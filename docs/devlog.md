@@ -3,6 +3,19 @@
 This is the concise, human-readable record of validated delivery decisions.
 Detailed implementation and release notes belong in the PR and changelog.
 
+## 2026-07-18 — Accessible R3F stage foundation
+
+- Began the 1.0 visual track with a procedural R3F office and Platt rig driven
+  by the existing state contract. It reflects working, approval, talking,
+  celebration, and concern without changing the audited event model.
+- Kept the 2D office as the explicit renderer fallback whenever WebGL is
+  unavailable or reduced motion is preferred. The 3D scene is lazy-loaded,
+  preserving a 224 kB (70.5 kB gzip) default JavaScript bundle; the separate
+  3D renderer chunk is 895 kB (240.8 kB gzip) in the production build.
+- This is a foundation checkpoint only: production 1.0 acceptance still needs
+  responsive/device verification, deployed validation, the complete release
+  evidence, and a versioned major-release decision.
+
 ## 2026-07-18 — 0.2.0 release candidate
 
 - Aligned the backend and frontend package declarations, changelog, roadmap,

@@ -10,16 +10,19 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@react-three/fiber": "^9.6.1",
     "@vitejs/plugin-react": "^5.1.2",
     "lucide-react": "^0.561.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
+    "three": "^0.185.1",
     "vite": "^7.3.0",
     "zustand": "^5.0.9"
   },
   "devDependencies": {
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
+    "@types/three": "^0.185.1",
     "typescript": "^5.9.3",
     "vitest": "^4.1.10"
   }
