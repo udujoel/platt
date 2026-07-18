@@ -1,4 +1,6 @@
 import asyncio
+import os
+import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncIterator
@@ -14,11 +16,37 @@ from app.services.onboarding import OnboardingStore
 
 
 LOCAL_VITE_ORIGIN_REGEX = r"^http://(?:localhost|127\.0\.0\.1):517\d+$"
+ALLOWED_ORIGIN_REGEX_ENV = "PLATT_ALLOWED_ORIGIN_REGEX"
+
+
+def resolve_allowed_origin_regex(configured_regex: str | None = None) -> str:
+    """Return a validated CORS policy without broadening the local default.
+
+    Operators should use simple, anchored expressions because CORS evaluates the
+    policy on every browser preflight request.
+    """
+
+    origin_regex = (
+        configured_regex
+        if configured_regex is not None
+        else os.environ.get(ALLOWED_ORIGIN_REGEX_ENV, LOCAL_VITE_ORIGIN_REGEX)
+    )
+    if not origin_regex:
+        raise ValueError(f"{ALLOWED_ORIGIN_REGEX_ENV} must not be empty")
+
+    try:
+        re.compile(origin_regex)
+    except re.error as error:
+        raise ValueError(
+            f"{ALLOWED_ORIGIN_REGEX_ENV} must be a valid regular expression"
+        ) from error
+    return origin_regex
 
 
 def create_app(
     db_path: str | Path | None = None,
     onboarding_db_path: Path | None = None,
+    allowed_origin_regex: str | None = None,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -34,11 +62,13 @@ def create_app(
             event_bus.clear_recorder(recorder)
             persistence.close()
 
+    origin_regex = resolve_allowed_origin_regex(allowed_origin_regex)
     app = FastAPI(title="Platt API", version="0.1.0", lifespan=lifespan)
     app.state.onboarding_store = OnboardingStore(onboarding_db_path)
+    app.state.allowed_origin_regex = origin_regex
     app.add_middleware(
         CORSMiddleware,
-        allow_origin_regex=LOCAL_VITE_ORIGIN_REGEX,
+        allow_origin_regex=origin_regex,
         allow_credentials=False,
         allow_methods=["GET", "POST"],
         allow_headers=["Content-Type"],

@@ -3,6 +3,14 @@
 This is the concise, human-readable record of validated delivery decisions.
 Detailed implementation and release notes belong in the PR and changelog.
 
+## 2026-07-18 — Configurable API-origin preparation
+
+- Added a validated `PLATT_ALLOWED_ORIGIN_REGEX` setting for explicit backend
+  API origins while preserving the existing local-Vite-only default.
+- This prepares a future preview or production service boundary without
+  selecting a backend host, adding credentials, or claiming WebSocket origin
+  enforcement before it exists.
+
 ## 2026-07-18 — Client reconnect-policy coverage
 
 - Extracted the local WebSocket retry policy into a small shared module and
