@@ -1,16 +1,19 @@
 import asyncio
 import json
+import re
 import sqlite3
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from threading import Event as ThreadEvent
 from threading import Thread
 from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from app.event_bus import EventBus, event_bus
-from app.main import create_app
+from app.main import LOCAL_VITE_ORIGIN_REGEX, create_app
 from app.models import AgentStateEvent, EventType, PlattState
 from app.routers import dev
 from app.routers.ws import websocket_event_bus
@@ -90,6 +93,26 @@ def test_create_app_rejects_invalid_allowed_origin_regex() -> None:
         create_app(allowed_origin_regex="[")
 
 
+def test_websocket_rejects_disallowed_origin(client: TestClient) -> None:
+    with pytest.raises(WebSocketDisconnect) as error:
+        with client.websocket_connect("/ws", headers={"Origin": "https://example.com"}):
+            pass
+
+    assert error.value.code == 1008
+
+
+def test_websocket_accepts_explicit_configured_origin(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("PLATT_ALLOWED_ORIGIN_REGEX", r"^https://preview\.platt\.example$")
+
+    with TestClient(create_app(db_path=tmp_path / "platt-test.db")) as configured_client:
+        with configured_client.websocket_connect(
+            "/ws", headers={"Origin": "https://preview.platt.example"}
+        ):
+            pass
+
+
 def test_chat_accepts_job(client: TestClient) -> None:
     response = client.post("/chat", json={"prompt": "hello"})
 
@@ -122,7 +145,7 @@ def test_websocket_receives_phase_1_events(client: TestClient) -> None:
             )
         )
 
-    with client.websocket_connect("/ws") as websocket:
+    with client.websocket_connect("/ws", headers={"Origin": "http://127.0.0.1:5175"}) as websocket:
         thread = Thread(target=publish_event)
         thread.start()
 
@@ -349,7 +372,7 @@ def test_websocket_delivery_survives_recorder_failure(client: TestClient) -> Non
                 )
             )
 
-        with client.websocket_connect("/ws") as websocket:
+        with client.websocket_connect("/ws", headers={"Origin": "http://127.0.0.1:5175"}) as websocket:
             thread = Thread(target=publish_event)
             thread.start()
 
@@ -365,6 +388,11 @@ def test_websocket_delivery_survives_recorder_failure(client: TestClient) -> Non
 
 def test_websocket_cancellation_propagates(monkeypatch) -> None:
     class Websocket:
+        headers = {"origin": "http://127.0.0.1:5175"}
+        app = SimpleNamespace(
+            state=SimpleNamespace(allowed_origin_pattern=re.compile(LOCAL_VITE_ORIGIN_REGEX))
+        )
+
         async def accept(self) -> None:
             return None
 
@@ -381,6 +409,10 @@ def test_websocket_cancellation_propagates(monkeypatch) -> None:
 def test_websocket_send_race_with_closed_transport_is_a_normal_disconnect(monkeypatch) -> None:
     class Websocket:
         accepted = False
+        headers = {"origin": "http://127.0.0.1:5175"}
+        app = SimpleNamespace(
+            state=SimpleNamespace(allowed_origin_pattern=re.compile(LOCAL_VITE_ORIGIN_REGEX))
+        )
 
         async def accept(self) -> None:
             self.accepted = True
