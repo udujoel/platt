@@ -6,7 +6,7 @@ import type { ThreeStageState } from "./three-stage-pose";
 
 function PlattRig({ state }: { state: ThreeStageState }) {
   const rig = React.useRef<Group>(null);
-  const head = React.useRef<Mesh>(null);
+  const head = React.useRef<Group>(null);
   const leftArm = React.useRef<Mesh>(null);
   const rightArm = React.useRef<Mesh>(null);
 
@@ -24,8 +24,10 @@ function PlattRig({ state }: { state: ThreeStageState }) {
 
   return (
     <group ref={rig} position={[0, 1.05, 0]}>
-      <mesh ref={head} position={[0, 0.93, 0]} castShadow><sphereGeometry args={[0.39, 18, 14]} /><meshStandardMaterial color="#c98c64" roughness={0.7} /></mesh>
-      <mesh position={[0, 1.18, 0.12]} castShadow><boxGeometry args={[0.5, 0.14, 0.22]} /><meshStandardMaterial color="#263145" roughness={0.82} /></mesh>
+      <group ref={head} position={[0, 0.93, 0]}>
+        <mesh castShadow><sphereGeometry args={[0.39, 18, 14]} /><meshStandardMaterial color="#c98c64" roughness={0.7} /></mesh>
+        <mesh position={[0, 0.25, 0.12]} castShadow><boxGeometry args={[0.5, 0.14, 0.22]} /><meshStandardMaterial color="#263145" roughness={0.82} /></mesh>
+      </group>
       <mesh position={[0, 0.28, 0]} castShadow><boxGeometry args={[0.7, 0.95, 0.38]} /><meshStandardMaterial color="#304969" roughness={0.78} /></mesh>
       <mesh position={[0, 0.38, 0.21]}><boxGeometry args={[0.23, 0.58, 0.03]} /><meshStandardMaterial color="#e5edf0" /></mesh>
       <mesh ref={leftArm} position={[-0.24, 0.48, 0]} castShadow><capsuleGeometry args={[0.11, 0.62, 6, 10]} /><meshStandardMaterial color="#304969" /></mesh>
