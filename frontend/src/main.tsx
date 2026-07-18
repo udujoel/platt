@@ -102,6 +102,25 @@ type OnboardingRecord = {
   pipeline_yamls: OnboardingPipeline[];
 };
 
+type RepositoryInspectionStep = {
+  id: string;
+  title: string;
+  tool: "read_file" | "glob" | "grep";
+  arguments: Record<string, string>;
+  expected_output: string;
+};
+
+type RepositoryInspectionPlan = {
+  summary: string;
+  steps: RepositoryInspectionStep[];
+};
+
+type RepositoryInspectionPlanResponse = {
+  job_id: string;
+  status: "accepted";
+  plan: RepositoryInspectionPlan;
+};
+
 type PersistedJobEvent = {
   id: string;
   job_id: string;
@@ -461,13 +480,18 @@ function repositoryName(path: string) {
 function RepositoryContext({
   record,
   onRecordChange,
+  onPlanJobAccepted,
 }: {
   record: OnboardingRecord | null;
   onRecordChange: (record: OnboardingRecord) => void;
+  onPlanJobAccepted: (jobId: string) => void;
 }) {
   const [repositoryPath, setRepositoryPath] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [plan, setPlan] = React.useState<RepositoryInspectionPlan | null>(null);
+  const [planBusy, setPlanBusy] = React.useState(false);
+  const [planError, setPlanError] = React.useState<string | null>(null);
   const modulePreview = record?.terraform_module_nodes.slice(0, 3).map((module) => module.path === "." ? "root" : module.path).join(", ");
 
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -479,11 +503,31 @@ function RepositoryContext({
     setError(null);
     try {
       const response = await postJson<OnboardingRecord>("/onboarding", { repository_path: path });
+      setPlan(null);
+      setPlanError(null);
       onRecordChange(response);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not onboard this repository.");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const onPreparePlan = async () => {
+    if (!record || planBusy) return;
+
+    setPlanBusy(true);
+    setPlanError(null);
+    try {
+      const response = await postJson<RepositoryInspectionPlanResponse>(
+        `/onboarding/${encodeURIComponent(record.id)}/plans/repository-review`,
+      );
+      setPlan(response.plan);
+      onPlanJobAccepted(response.job_id);
+    } catch (reason) {
+      setPlanError(reason instanceof Error ? reason.message : "Could not prepare this review plan.");
+    } finally {
+      setPlanBusy(false);
     }
   };
 
@@ -521,6 +565,32 @@ function RepositoryContext({
             <div><dt>Pipelines</dt><dd>{record.pipeline_yamls.length}</dd></div>
           </dl>
           {modulePreview ? <p>Graph: {modulePreview}{record.terraform_module_nodes.length > 3 ? "…" : ""}</p> : <p>No Terraform module graph found.</p>}
+          <button className="planButton" type="button" onClick={() => void onPreparePlan()} disabled={planBusy}>
+            {planBusy ? "Preparing plan" : "Prepare review plan"}
+          </button>
+          {planError ? <div className="repositoryError" role="alert">{planError}</div> : null}
+          {plan ? (
+            <section className="reviewPlan" aria-labelledby="review-plan-heading">
+              <header>
+                <div>
+                  <p className="eyebrow">Read-only review</p>
+                  <h2 id="review-plan-heading">Proposed tool plan</h2>
+                </div>
+                <span>{plan.steps.length} steps</span>
+              </header>
+              <p>{plan.summary}</p>
+              <ol>
+                {plan.steps.map((step) => (
+                  <li key={step.id}>
+                    <strong>{step.title}</strong>
+                    <span><b>{step.tool}</b> · {Object.entries(step.arguments).map(([name, value]) => `${name}: ${value}`).join(", ")}</span>
+                    <small>{step.expected_output}</small>
+                  </li>
+                ))}
+              </ol>
+              <footer>Preview only — these steps are not run automatically.</footer>
+            </section>
+          ) : null}
         </div>
       ) : null}
     </section>
@@ -577,12 +647,14 @@ function AuditInspector({
   lastEvent,
   onboardingRecord,
   onOnboardingRecordChange,
+  onPlanJobAccepted,
 }: {
   selectedJobId: string | null;
   onSelectJob: (jobId: string) => void;
   lastEvent: BackendEvent | null;
   onboardingRecord: OnboardingRecord | null;
   onOnboardingRecordChange: (record: OnboardingRecord) => void;
+  onPlanJobAccepted: (jobId: string) => void;
 }) {
   const [audit, setAudit] = React.useState<AsyncState<AuditEntry[]>>(initialAuditState);
   const [job, setJob] = React.useState<AsyncState<Job | null>>(initialJobState);
@@ -655,7 +727,7 @@ function AuditInspector({
 
   return (
     <aside className="auditPanel" aria-label="Audit and job inspector">
-      <RepositoryContext record={onboardingRecord} onRecordChange={onOnboardingRecordChange} />
+      <RepositoryContext record={onboardingRecord} onRecordChange={onOnboardingRecordChange} onPlanJobAccepted={onPlanJobAccepted} />
       <section className="auditSection auditListSection" aria-labelledby="audit-heading">
         <header className="auditHeader">
           <div>
@@ -893,6 +965,7 @@ function App() {
         lastEvent={lastEvent}
         onboardingRecord={onboardingRecord}
         onOnboardingRecordChange={setOnboardingRecord}
+        onPlanJobAccepted={selectJob}
       />
       <Stage />
       <ChatPanel onJobAccepted={selectJob} onboardingRecord={onboardingRecord} />

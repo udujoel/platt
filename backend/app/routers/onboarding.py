@@ -13,6 +13,8 @@ from app.models import (
     JobCreatedEvent,
     OnboardingRecord,
     OnboardingRequest,
+    PlanReadyEvent,
+    RepositoryInspectionPlanResponse,
     RepositoryToolDefinition,
     RepositoryToolInvocation,
     RepositoryToolResponse,
@@ -26,6 +28,7 @@ from app.services.onboarding import (
     execute_repository_tool,
     inspect_repository,
     onboarding_system_prompt,
+    repository_inspection_plan,
     repository_tool_definitions,
     trace_module,
 )
@@ -99,6 +102,28 @@ async def chat_about_onboarded_repository(
         ),
     )
     return ChatResponse(job_id=job_id)
+
+
+@router.post(
+    "/{onboarding_id}/plans/repository-review",
+    response_model=RepositoryInspectionPlanResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def prepare_repository_review_plan(request: Request, onboarding_id: UUID) -> RepositoryInspectionPlanResponse:
+    """Persist an inspectable, read-only review plan without invoking repository tools."""
+    try:
+        record = _store(request).get(onboarding_id)
+    except OnboardingNotFoundError as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="onboarding record not found") from error
+    plan = repository_inspection_plan(record)
+    job_id = uuid4()
+    persistence = _persistence(request)
+    prompt = "Prepare a read-only repository review plan."
+    persistence.record_job(job_id=job_id, prompt=prompt)
+    persistence.record_audit_entry(job_id=job_id, tool="onboarding_plan", action="create_plan", outcome="accepted")
+    await event_bus.publish(JobCreatedEvent(job_id=job_id, prompt=prompt))
+    await event_bus.publish(PlanReadyEvent(job_id=job_id, summary=plan.summary))
+    return RepositoryInspectionPlanResponse(job_id=job_id, plan=plan)
 
 
 @router.get("/{onboarding_id}/tools", response_model=list[RepositoryToolDefinition])

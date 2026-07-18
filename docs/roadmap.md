@@ -36,10 +36,11 @@ completed 3D implementation.
 
 - Build on the existing local-only onboarding inventory; do not reimplement it.
 - Started with a frontend local-repository onboarding panel: it shows bounded
-  inventory/graph facts and sends subsequent questions through the scoped
-  onboarding-chat endpoint.
-- Turn discovered repository facts into inspectable, bounded job plans with
-  explicit tool inputs, outputs, and audit records.
+  inventory/graph facts, prepares a read-only review-plan preview, and sends
+  subsequent questions through the scoped onboarding-chat endpoint.
+- Started turning discovered repository facts into inspectable, bounded job
+  plans with explicit tool inputs, outputs, and audit records. Plan creation
+  cannot execute repository tools.
 - Add tests for path boundaries, refusal behavior, retries, reconnects, and
   event ordering before enabling any remote side effect.
 
