@@ -20,6 +20,8 @@ patch version.
   bounded results and audit events linked to the original plan job.
 - Automated frontend retry-policy coverage, including exponential backoff,
   capped delays, and stable-connection resets, enforced in CI.
+- A validated `PLATT_ALLOWED_ORIGIN_REGEX` backend setting for explicit API
+  origins, while retaining the safe local-Vite-only default.
 
 ## [0.1.1] — 2026-07-18
 

@@ -59,6 +59,37 @@ def test_audit_preflight_rejects_non_local_origin(client: TestClient) -> None:
     assert "access-control-allow-origin" not in response.headers
 
 
+def test_audit_preflight_uses_explicit_configured_origin(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("PLATT_ALLOWED_ORIGIN_REGEX", r"^https://preview\.platt\.example$")
+
+    with TestClient(create_app(db_path=tmp_path / "platt-test.db")) as configured_client:
+        response = configured_client.options(
+            "/audit",
+            headers={
+                "Origin": "https://preview.platt.example",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        rejected_response = configured_client.options(
+            "/audit",
+            headers={
+                "Origin": "http://127.0.0.1:5175",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "https://preview.platt.example"
+    assert rejected_response.status_code == 400
+
+
+def test_create_app_rejects_invalid_allowed_origin_regex() -> None:
+    with pytest.raises(ValueError, match="PLATT_ALLOWED_ORIGIN_REGEX must be a valid"):
+        create_app(allowed_origin_regex="[")
+
+
 def test_chat_accepts_job(client: TestClient) -> None:
     response = client.post("/chat", json={"prompt": "hello"})
 

@@ -64,6 +64,23 @@ Not implemented yet:
 
 Set `ANTHROPIC_API_KEY` to enable live streaming replies. Without it, Platt streams a safe configuration message and returns to idle; `/dev/state-cycle` remains available to exercise every visual state without credentials.
 
+## Frontend origin configuration
+
+The backend accepts only local Vite origins by default. To run against a known
+preview or production frontend, set `PLATT_ALLOWED_ORIGIN_REGEX` to a strict
+regular expression for the approved origins, for example:
+
+```bash
+PLATT_ALLOWED_ORIGIN_REGEX='^https://platt-preview\.example\.com$' \
+  .venv/bin/uvicorn app.main:app
+```
+
+The server rejects an empty or invalid expression at startup. Configure the
+frontend with `VITE_API_BASE_URL` and `VITE_WS_URL` to point at that backend.
+This only makes the origin policy explicit; it neither provisions nor selects a
+production API host, and WebSocket origin enforcement remains a separate 0.3
+delivery item.
+
 ## Local onboarding API
 
 Configure `PLATT_ONBOARDING_ROOT` to the app-owned directory containing checked-out
