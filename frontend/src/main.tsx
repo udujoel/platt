@@ -3,6 +3,8 @@ import ReactDOM from "react-dom/client";
 import { ChevronRight, CircleAlert, ClipboardList, Play, RefreshCw, SendHorizonal } from "lucide-react";
 import { create } from "zustand";
 import "./styles.css";
+import { resolveBackendConfiguration } from "./backend-config";
+import type { BackendConfiguration } from "./backend-config";
 import { ReconnectPolicy } from "./reconnect-policy";
 
 type PlattState =
@@ -153,8 +155,12 @@ type EventStore = {
   addLocalEvent: (state: PlattState, label: string) => void;
 };
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
-const wsUrl = import.meta.env.VITE_WS_URL ?? "ws://127.0.0.1:8000/ws";
+const backendConfiguration = resolveBackendConfiguration({
+  apiBaseUrl: import.meta.env.VITE_API_BASE_URL,
+  frontendHostname: window.location.hostname,
+  wsUrl: import.meta.env.VITE_WS_URL,
+});
+const { apiBaseUrl, wsUrl } = backendConfiguration;
 
 const stateLabels: Record<PlattState, string> = {
   idle: "Idle",
@@ -1070,7 +1076,7 @@ function ChatPanel({
   );
 }
 
-function App() {
+function ConnectedApp() {
   const lastEvent = useBackendEvents();
   const [selectedJobId, setSelectedJobId] = React.useState<string | null>(null);
   const [onboardingRecord, setOnboardingRecord] = React.useState<OnboardingRecord | null>(null);
@@ -1089,6 +1095,28 @@ function App() {
       <Stage />
       <ChatPanel onJobAccepted={selectJob} onboardingRecord={onboardingRecord} />
     </main>
+  );
+}
+
+function BackendConfigurationRequired({ configuration }: { configuration: BackendConfiguration }) {
+  return (
+    <main className="configurationGuard">
+      <section className="configurationCard" aria-labelledby="backend-configuration-title">
+        <CircleAlert size={28} aria-hidden="true" />
+        <p className="eyebrow">Backend configuration required</p>
+        <h1 id="backend-configuration-title">Platt is not connected to a hosted API.</h1>
+        <p>{configuration.message}</p>
+        <p>Set those build-time variables to an approved backend, then redeploy this frontend.</p>
+      </section>
+    </main>
+  );
+}
+
+function App() {
+  return backendConfiguration.isConfigured ? (
+    <ConnectedApp />
+  ) : (
+    <BackendConfigurationRequired configuration={backendConfiguration} />
   );
 }
 

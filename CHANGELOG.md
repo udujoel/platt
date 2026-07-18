@@ -24,6 +24,8 @@ patch version.
   origins, while retaining the safe local-Vite-only default.
 - Browser WebSockets now enforce that same approved-origin policy before they
   subscribe or receive event data.
+- Hosted frontend builds now visibly require explicit API and WebSocket URLs
+  instead of attempting their visitor's local development backend.
 
 ## [0.1.1] — 2026-07-18
 

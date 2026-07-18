@@ -743,6 +743,29 @@ input {
   color: #fecaca;
 }
 
+.configurationGuard {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 1.5rem;
+  background: radial-gradient(circle at 72% 26%, rgba(255, 180, 84, 0.17), transparent 28rem), linear-gradient(140deg, #202735 0%, #111720 68%, #0b0f15 100%);
+}
+
+.configurationCard {
+  width: min(100%, 38rem);
+  padding: clamp(1.5rem, 4vw, 3rem);
+  border: 1px solid rgba(255, 180, 84, 0.35);
+  border-radius: 1rem;
+  background: rgba(18, 22, 30, 0.94);
+  box-shadow: 0 1.5rem 4rem rgba(0, 0, 0, 0.3);
+  color: #f4f7fb;
+}
+
+.configurationCard > svg { color: #ffb454; }
+.configurationCard h1 { margin: 0.45rem 0 0.9rem; font-size: clamp(1.6rem, 4vw, 2.4rem); line-height: 1.1; }
+.configurationCard p { margin: 0.65rem 0; color: rgba(244, 247, 251, 0.78); line-height: 1.55; }
+.configurationCard .eyebrow { color: #ffb454; font-size: 0.74rem; font-weight: 900; letter-spacing: 0.14em; text-transform: uppercase; }
+
 .chatPanel {
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto auto;

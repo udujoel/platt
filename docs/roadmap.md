@@ -60,6 +60,9 @@ completed 3D implementation.
   `PLATT_ALLOWED_ORIGIN_REGEX` override while retaining a local-Vite-only
   default. Health checks, deployments, and rollback evidence remain to be
   delivered with a selected backend host.
+- Hosted frontend builds without explicitly configured API and WebSocket URLs
+  now render a configuration-required screen instead of silently attempting a
+  visitor's local backend.
 - Do not add a paid service, secret, or ownership/access change without user
   direction.
 
