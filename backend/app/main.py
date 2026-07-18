@@ -20,7 +20,11 @@ ALLOWED_ORIGIN_REGEX_ENV = "PLATT_ALLOWED_ORIGIN_REGEX"
 
 
 def resolve_allowed_origin_regex(configured_regex: str | None = None) -> str:
-    """Return a validated CORS policy without broadening the local default."""
+    """Return a validated CORS policy without broadening the local default.
+
+    Operators should use simple, anchored expressions because CORS evaluates the
+    policy on every browser preflight request.
+    """
 
     origin_regex = (
         configured_regex
