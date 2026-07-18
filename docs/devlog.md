@@ -3,6 +3,15 @@
 This is the concise, human-readable record of validated delivery decisions.
 Detailed implementation and release notes belong in the PR and changelog.
 
+## 2026-07-18 — Inspectable repository review plans
+
+- Added a deterministic, read-only review-plan endpoint that derives proposed
+  `glob`, `grep`, and inventoried-file reads from a persisted onboarding
+  record. Creating a plan records a job, audit entry, and plan-ready event;
+  it does not invoke a repository tool.
+- Exposed that plan in the local onboarding panel so an operator can inspect
+  each proposed input and expected output before any tool-execution UI exists.
+
 ## 2026-07-18 — Repository context reaches the frontend
 
 - Added a local-only onboarding panel to the React interface. An operator can

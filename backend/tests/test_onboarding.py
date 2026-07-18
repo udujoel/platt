@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-from app.services.onboarding import inspect_repository, onboarding_system_prompt
+from app.services.onboarding import inspect_repository, onboarding_system_prompt, repository_inspection_plan
 
 
 @pytest.fixture(autouse=True)
@@ -217,6 +217,112 @@ def test_onboarding_chat_creates_an_audited_scoped_job(tmp_path: Path) -> None:
 
     assert job.json()["prompt"] == "What does this deploy?"
     assert any(entry["tool"] == "onboarding_chat" and entry["outcome"] == "accepted" for entry in audit.json()["entries"])
+
+
+def test_repository_review_plan_is_audited_and_does_not_execute_tools(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    (repository / "main.tf").write_text('module "network" { source = "./modules/network" }\n')
+    (repository / "versions.tf").write_text('terraform { required_version = ">= 1.7" }\n')
+    (repository / "azure-pipelines.yml").write_text("trigger:\n  - main\n")
+
+    with _client(tmp_path) as client:
+        created = client.post("/onboarding", json={"repository_path": str(repository)})
+        assert created.status_code == 201
+        response = client.post(f"/onboarding/{created.json()['id']}/plans/repository-review")
+        assert response.status_code == 202
+        job_id = response.json()["job_id"]
+        job = client.get(f"/jobs/{job_id}")
+        events = client.get(f"/jobs/{job_id}/events")
+        audit = client.get(f"/audit?job_id={job_id}")
+
+    assert response.json()["status"] == "accepted"
+    assert response.json()["plan"] == {
+        "summary": "Review 5 read-only repository steps for 3 inventoried files. Preparing this plan does not execute tools.",
+        "steps": [
+            {
+                "id": "terraform-files",
+                "title": "Map Terraform configuration",
+                "tool": "glob",
+                "arguments": {"pattern": "**/*.tf"},
+                "expected_output": "A bounded list of Terraform configuration paths in the persisted inventory.",
+            },
+            {
+                "id": "module-declarations",
+                "title": "Locate Terraform module declarations",
+                "tool": "grep",
+                "arguments": {"query": "module "},
+                "expected_output": "Bounded matches for module declarations and local-source entry points.",
+            },
+            {
+                "id": "provider-constraints",
+                "title": "Review provider and version constraints",
+                "tool": "read_file",
+                "arguments": {"path": "versions.tf"},
+                "expected_output": "The repository's inventoried Terraform provider and version constraints.",
+            },
+            {
+                "id": "pipeline-definition",
+                "title": "Review pipeline entry point",
+                "tool": "read_file",
+                "arguments": {"path": "azure-pipelines.yml"},
+                "expected_output": "The inventoried pipeline's triggers, path filters, and declared steps.",
+            },
+            {
+                "id": "governance-tags",
+                "title": "Find resource tagging conventions",
+                "tool": "grep",
+                "arguments": {"query": "tags"},
+                "expected_output": "Bounded matches for Terraform tag blocks and tag-related conventions.",
+            },
+        ],
+    }
+    assert job.json()["prompt"] == "Prepare a read-only repository review plan."
+    assert [event["type"] for event in events.json()["events"]] == ["job_created", "plan_ready"]
+    assert {(entry["tool"], entry["action"], entry["outcome"]) for entry in audit.json()["entries"]} == {
+        ("onboarding_plan", "create_plan", "accepted")
+    }
+
+
+def test_repository_review_plan_skips_optional_file_reads_outside_the_inventory(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    (repository / "README.md").write_text("No infrastructure files here.\n")
+
+    with _client(tmp_path) as client:
+        created = client.post("/onboarding", json={"repository_path": str(repository)})
+        response = client.post(f"/onboarding/{created.json()['id']}/plans/repository-review")
+
+    assert response.status_code == 202
+    assert response.json()["plan"]["steps"] == [
+        {
+            "id": "terraform-files",
+            "title": "Map Terraform configuration",
+            "tool": "glob",
+            "arguments": {"pattern": "**/*.tf"},
+            "expected_output": "A bounded list of Terraform configuration paths in the persisted inventory.",
+        },
+        {
+            "id": "governance-tags",
+            "title": "Find resource tagging conventions",
+            "tool": "grep",
+            "arguments": {"query": "tags"},
+            "expected_output": "Bounded matches for Terraform tag blocks and tag-related conventions.",
+        },
+    ]
+
+
+def test_repository_review_plan_only_uses_persisted_inventory_paths(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    (repository / "azure-pipelines.yml").write_text("trigger:\n  - main\n")
+    record = inspect_repository(str(repository))
+    record.pipeline_yamls[0].file_path = "../outside.yml"
+
+    plan = repository_inspection_plan(record)
+
+    assert all(step.arguments.get("path") != "../outside.yml" for step in plan.steps)
+    assert all(step.id != "pipeline-definition" for step in plan.steps)
 
 
 def test_repository_tools_read_glob_grep_and_audit_a_persisted_inventory(tmp_path: Path) -> None:

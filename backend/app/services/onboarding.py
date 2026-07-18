@@ -27,6 +27,8 @@ from app.models import (
     RepositoryFileReadResult,
     RepositoryGlobResult,
     RepositoryGrepResult,
+    RepositoryInspectionPlan,
+    RepositoryInspectionStep,
     RepositorySearchMatch,
     RepositoryToolDefinition,
     RepositoryToolInvocation,
@@ -422,6 +424,70 @@ def onboarding_system_prompt(record: OnboardingRecord) -> str:
 
 def repository_tool_definitions() -> list[RepositoryToolDefinition]:
     return [definition.model_copy(deep=True) for definition in REPOSITORY_TOOL_DEFINITIONS]
+
+
+def repository_inspection_plan(record: OnboardingRecord) -> RepositoryInspectionPlan:
+    """Create, but never execute, a deterministic review plan from persisted facts."""
+    inventory_paths = {entry.path for entry in record.files}
+    steps = [
+        RepositoryInspectionStep(
+            id="terraform-files",
+            title="Map Terraform configuration",
+            tool="glob",
+            arguments={"pattern": "**/*.tf"},
+            expected_output="A bounded list of Terraform configuration paths in the persisted inventory.",
+        ),
+    ]
+    if record.terraform_modules:
+        steps.append(
+            RepositoryInspectionStep(
+                id="module-declarations",
+                title="Locate Terraform module declarations",
+                tool="grep",
+                arguments={"query": "module "},
+                expected_output="Bounded matches for module declarations and local-source entry points.",
+            )
+        )
+    if "versions.tf" in inventory_paths:
+        steps.append(
+            RepositoryInspectionStep(
+                id="provider-constraints",
+                title="Review provider and version constraints",
+                tool="read_file",
+                arguments={"path": "versions.tf"},
+                expected_output="The repository's inventoried Terraform provider and version constraints.",
+            )
+        )
+    pipeline_paths = sorted(
+        pipeline.file_path for pipeline in record.pipeline_yamls if pipeline.file_path in inventory_paths
+    )
+    if pipeline_paths:
+        pipeline_path = pipeline_paths[0]
+        steps.append(
+            RepositoryInspectionStep(
+                id="pipeline-definition",
+                title="Review pipeline entry point",
+                tool="read_file",
+                arguments={"path": pipeline_path},
+                expected_output="The inventoried pipeline's triggers, path filters, and declared steps.",
+            )
+        )
+    steps.append(
+        RepositoryInspectionStep(
+            id="governance-tags",
+            title="Find resource tagging conventions",
+            tool="grep",
+            arguments={"query": "tags"},
+            expected_output="Bounded matches for Terraform tag blocks and tag-related conventions.",
+        )
+    )
+    return RepositoryInspectionPlan(
+        summary=(
+            f"Review {len(steps)} read-only repository steps for {len(record.files)} inventoried files. "
+            "Preparing this plan does not execute tools."
+        ),
+        steps=steps,
+    )
 
 
 def _tool_argument(arguments: dict[str, str], name: str, max_length: int) -> str:

@@ -12,6 +12,8 @@ patch version.
 - A frontend local-repository onboarding workflow that surfaces bounded file,
   Terraform graph, and pipeline counts, then scopes chat to the resulting
   onboarding record.
+- An audited read-only repository review-plan preview that shows bounded tool
+  inputs and expected outputs without executing a tool.
 
 ## [0.1.1] — 2026-07-18
 

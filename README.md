@@ -48,7 +48,9 @@ Implemented:
   traces, pipeline discovery, provider posture, resource definitions, and
   governance conventions through the onboarding APIs.
 - A local repository onboarding panel that displays bounded inventory and graph
-  facts, then scopes subsequent chat requests to that onboarding record.
+  facts, prepares an explicit read-only review-plan preview, then scopes
+  subsequent chat requests to that onboarding record. Preparing the preview
+  records an audit event but does not run its listed tools.
 - React/Vite shell with the audit inspector, chat panel, animated office, speech bubble, and state-specific Platt rig.
 - Orca work packages for planning, backend, frontend, and operations.
 

@@ -237,6 +237,93 @@ input {
   font-weight: 800;
 }
 
+.planButton {
+  min-height: 32px;
+  border: 1px solid rgba(45, 212, 191, 0.45);
+  border-radius: 7px;
+  padding: 0 0.62rem;
+  background: rgba(45, 212, 191, 0.12);
+  color: #99f6e4;
+  cursor: pointer;
+  font-size: 0.71rem;
+  font-weight: 800;
+}
+
+.planButton:hover {
+  border-color: #2dd4bf;
+  background: rgba(45, 212, 191, 0.2);
+}
+
+.planButton:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.reviewPlan {
+  display: grid;
+  gap: 0.55rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid rgba(45, 212, 191, 0.2);
+}
+
+.reviewPlan header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.reviewPlan h2 {
+  font-size: 0.82rem;
+}
+
+.reviewPlan header > span {
+  color: #99f6e4;
+  font-size: 0.65rem;
+  font-weight: 800;
+}
+
+.reviewPlan > p,
+.reviewPlan footer {
+  color: rgba(244, 247, 251, 0.62);
+  font-size: 0.68rem;
+  line-height: 1.4;
+}
+
+.reviewPlan ol {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reviewPlan li {
+  display: grid;
+  gap: 0.16rem;
+  padding: 0.48rem;
+  border: 1px solid rgba(244, 247, 251, 0.1);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.reviewPlan li > strong {
+  color: #f4f7fb;
+  font-size: 0.72rem;
+}
+
+.reviewPlan li > span,
+.reviewPlan li > small {
+  color: rgba(244, 247, 251, 0.62);
+  font-size: 0.66rem;
+  line-height: 1.35;
+}
+
+.reviewPlan li b {
+  color: #99f6e4;
+  font-size: 0.64rem;
+}
+
 .iconButton,
 .textButton {
   display: inline-flex;

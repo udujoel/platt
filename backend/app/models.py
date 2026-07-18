@@ -204,6 +204,25 @@ class RepositoryToolInvocation(BaseModel):
     arguments: dict[str, str] = Field(default_factory=dict, max_length=2)
 
 
+class RepositoryInspectionStep(BaseModel):
+    id: str
+    title: str
+    tool: RepositoryToolName
+    arguments: dict[str, str]
+    expected_output: str
+
+
+class RepositoryInspectionPlan(BaseModel):
+    summary: str
+    steps: list[RepositoryInspectionStep]
+
+
+class RepositoryInspectionPlanResponse(BaseModel):
+    job_id: UUID
+    status: Literal["accepted"] = "accepted"
+    plan: RepositoryInspectionPlan
+
+
 class RepositoryFileReadResult(BaseModel):
     path: str
     content: str
