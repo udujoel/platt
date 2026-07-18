@@ -3,11 +3,12 @@ import { describe, expect, it } from "vitest";
 import { resolveBackendConfiguration } from "./backend-config";
 
 describe("resolveBackendConfiguration", () => {
-  it("keeps the local development defaults available", () => {
-    expect(resolveBackendConfiguration({ frontendHostname: "127.0.0.1" })).toMatchObject({
+  it.each(["127.0.0.1", "localhost", "::1"])("keeps local development defaults available for %s", (frontendHostname) => {
+    expect(resolveBackendConfiguration({ frontendHostname })).toMatchObject({
       apiBaseUrl: "http://127.0.0.1:8000",
       wsUrl: "ws://127.0.0.1:8000/ws",
       isConfigured: true,
+      message: null,
     });
   });
 
