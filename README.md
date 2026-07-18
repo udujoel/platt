@@ -70,7 +70,8 @@ Implemented:
   Platt rig. Browsers with WebGL and no reduced-motion preference load a
   lightweight R3F office scene; all other browsers retain the animated 2D
   office stage. The 3D rig has explicit, tested poses for every typed agent
-  event state.
+  event state, and an unexpected WebGL context loss also returns the stage to
+  the 2D fallback.
 - Orca work packages for planning, backend, frontend, and operations.
 
 Not implemented yet:
