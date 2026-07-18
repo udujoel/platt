@@ -58,6 +58,12 @@ class Persistence:
         with self._lock:
             self._connection.close()
 
+    def check_ready(self) -> None:
+        """Verify that the current process can read from its SQLite connection."""
+
+        with self._lock:
+            self._connection.execute("select 1").fetchone()
+
     def record_job(self, job_id: UUID, prompt: str, status: str = "accepted") -> None:
         with self._lock, self._connection:
             self._connection.execute(

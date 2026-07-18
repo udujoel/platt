@@ -153,6 +153,11 @@ class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"
 
 
+class ReadinessResponse(BaseModel):
+    status: Literal["ready"] = "ready"
+    persistence: Literal["ok"] = "ok"
+
+
 class OnboardingRequest(BaseModel):
     repository_path: str = Field(min_length=1, max_length=4096)
 

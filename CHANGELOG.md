@@ -26,6 +26,8 @@ patch version.
   subscribe or receive event data.
 - Hosted frontend builds now visibly require explicit API and WebSocket URLs
   instead of attempting their visitor's local development backend.
+- A provider-neutral `/ready` endpoint that confirms the process can read its
+  SQLite persistence before a host sends it traffic.
 
 ## [0.1.1] — 2026-07-18
 
