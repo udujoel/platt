@@ -3,6 +3,14 @@
 This is the concise, human-readable record of validated delivery decisions.
 Detailed implementation and release notes belong in the PR and changelog.
 
+## 2026-07-18 — Browser WebSocket origin enforcement
+
+- Applied the validated API-origin pattern to WebSocket handshakes before they
+  can subscribe or receive an event. The default remains local Vite only; a
+  configured preview or production frontend must send a matching `Origin` header.
+- This closes the local cross-origin gap without selecting a backend host or
+  broadening the existing origin default.
+
 ## 2026-07-18 — Configurable API-origin preparation
 
 - Added a validated `PLATT_ALLOWED_ORIGIN_REGEX` setting for explicit backend

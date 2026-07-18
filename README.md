@@ -80,8 +80,9 @@ preflight request and rejects an empty or invalid expression at startup.
 Configure the frontend with `VITE_API_BASE_URL` and `VITE_WS_URL` to point at
 that backend.
 This only makes the origin policy explicit; it neither provisions nor selects a
-production API host, and WebSocket origin enforcement remains a separate 0.3
-delivery item.
+production API host. The same pattern is enforced before a browser WebSocket is
+subscribed or sent event data; clients without a matching `Origin` header are
+closed with the WebSocket policy-violation code.
 
 ## Local onboarding API
 

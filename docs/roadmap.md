@@ -56,10 +56,10 @@ completed 3D implementation.
 
 - Select and verify a production backend host before claiming a production
   Platt experience. Vercel currently hosts only the static frontend.
-- Started configuring explicit API origins: the backend now has a validated
+- Explicit API and browser-WebSocket origin policy now shares a validated
   `PLATT_ALLOWED_ORIGIN_REGEX` override while retaining a local-Vite-only
-  default. WebSocket origin enforcement, health checks, deployments, and
-  rollback evidence remain to be delivered with a selected backend host.
+  default. Health checks, deployments, and rollback evidence remain to be
+  delivered with a selected backend host.
 - Do not add a paid service, secret, or ownership/access change without user
   direction.
 
@@ -84,8 +84,8 @@ completed 3D implementation.
 ## Verified risks to reduce
 
 - The Vercel frontend has no verified production backend endpoint. The API
-  origin policy is configurable but defaults to local Vite development origins;
-  WebSocket origin enforcement is still pending.
+  and browser-WebSocket origin policy is configurable but defaults to local
+  Vite development origins.
 - SQLite persistence and the in-process event bus are appropriate for a local
   slice, not multi-instance/reconnect-resilient production delivery.
 - Azure seed infrastructure still contains placeholder identifiers and has not

@@ -66,6 +66,7 @@ def create_app(
     app = FastAPI(title="Platt API", version="0.1.0", lifespan=lifespan)
     app.state.onboarding_store = OnboardingStore(onboarding_db_path)
     app.state.allowed_origin_regex = origin_regex
+    app.state.allowed_origin_pattern = re.compile(origin_regex)
     app.add_middleware(
         CORSMiddleware,
         allow_origin_regex=origin_regex,
