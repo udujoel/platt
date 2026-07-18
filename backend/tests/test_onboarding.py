@@ -262,7 +262,7 @@ def test_repository_review_plan_is_audited_and_does_not_execute_tools(tmp_path: 
                 "expected_output": "The repository's inventoried Terraform provider and version constraints.",
             },
             {
-                "id": "pipeline-definition",
+                "id": "pipeline-definition-1",
                 "title": "Review pipeline entry point",
                 "tool": "read_file",
                 "arguments": {"path": "azure-pipelines.yml"},
@@ -322,7 +322,21 @@ def test_repository_review_plan_only_uses_persisted_inventory_paths(tmp_path: Pa
     plan = repository_inspection_plan(record)
 
     assert all(step.arguments.get("path") != "../outside.yml" for step in plan.steps)
-    assert all(step.id != "pipeline-definition" for step in plan.steps)
+    assert not any(step.id.startswith("pipeline-definition") for step in plan.steps)
+
+
+def test_repository_review_plan_includes_every_inventoried_pipeline(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    (repository / "azure-pipelines.release.yml").write_text("trigger:\n  - release\n")
+    (repository / "azure-pipelines.yml").write_text("trigger:\n  - main\n")
+
+    plan = repository_inspection_plan(inspect_repository(str(repository)))
+
+    assert [(step.id, step.arguments) for step in plan.steps if step.tool == "read_file"] == [
+        ("pipeline-definition-1", {"path": "azure-pipelines.release.yml"}),
+        ("pipeline-definition-2", {"path": "azure-pipelines.yml"}),
+    ]
 
 
 def test_repository_tools_read_glob_grep_and_audit_a_persisted_inventory(tmp_path: Path) -> None:

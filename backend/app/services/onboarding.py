@@ -461,11 +461,10 @@ def repository_inspection_plan(record: OnboardingRecord) -> RepositoryInspection
     pipeline_paths = sorted(
         pipeline.file_path for pipeline in record.pipeline_yamls if pipeline.file_path in inventory_paths
     )
-    if pipeline_paths:
-        pipeline_path = pipeline_paths[0]
+    for index, pipeline_path in enumerate(pipeline_paths, start=1):
         steps.append(
             RepositoryInspectionStep(
-                id="pipeline-definition",
+                id=f"pipeline-definition-{index}",
                 title="Review pipeline entry point",
                 tool="read_file",
                 arguments={"path": pipeline_path},
