@@ -18,18 +18,12 @@ DEV_STATE_SEQUENCE = (
 )
 
 
-async def stream_chat_job(
-    job_id: UUID,
-    bus: EventBus,
-    llm: StreamingLLM,
-    prompt: str,
-    system_prompt: str | None = None,
-) -> None:
+async def stream_chat_job(job_id: UUID, bus: EventBus, llm: StreamingLLM, prompt: str) -> None:
     await bus.publish(AgentStateEvent(job_id=job_id, state=PlattState.THINKING, label="Planning response"))
     next_index = 0
     response_started = False
     try:
-        async for delta in llm.stream_response(prompt, system_prompt=system_prompt):
+        async for delta in llm.stream_response(prompt):
             if not delta:
                 continue
             if not response_started:

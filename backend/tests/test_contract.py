@@ -320,6 +320,36 @@ def test_websocket_cancellation_propagates(monkeypatch) -> None:
         asyncio.run(websocket_event_bus(Websocket()))
 
 
+def test_websocket_send_race_with_closed_transport_is_a_normal_disconnect(monkeypatch) -> None:
+    class Websocket:
+        accepted = False
+
+        async def accept(self) -> None:
+            self.accepted = True
+
+        async def send_json(self, _event: dict[str, object]) -> None:
+            raise RuntimeError("Unable to perform operation on closed transport")
+
+    subscription_closed = False
+
+    async def one_event_subscription():
+        nonlocal subscription_closed
+        try:
+            yield AgentStateEvent(
+                job_id=uuid4(), state=PlattState.THINKING, label="Deliver once"
+            )
+        finally:
+            subscription_closed = True
+
+    websocket = Websocket()
+    monkeypatch.setattr(event_bus, "subscribe", one_event_subscription)
+
+    asyncio.run(websocket_event_bus(websocket))
+
+    assert websocket.accepted
+    assert subscription_closed
+
+
 def test_persistence_creates_job_id_indexes(tmp_path) -> None:
     app = create_app(db_path=tmp_path / "platt-test.db")
 

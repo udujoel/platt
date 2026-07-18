@@ -16,28 +16,17 @@ class CapturingBus:
 
 
 class StreamingTestLLM:
-    async def stream_response(self, prompt: str, system_prompt: str | None = None) -> AsyncIterator[str]:
+    async def stream_response(self, prompt: str) -> AsyncIterator[str]:
         assert prompt == "What is deployed?"
-        assert system_prompt is None
         yield "The repo "
         yield "deploys Terraform."
 
 
 class FailingTestLLM:
-    async def stream_response(self, prompt: str, system_prompt: str | None = None) -> AsyncIterator[str]:
-        del prompt, system_prompt
+    async def stream_response(self, prompt: str) -> AsyncIterator[str]:
+        del prompt
         raise RuntimeError("provider unavailable")
         yield ""
-
-
-class ContextTestLLM:
-    def __init__(self) -> None:
-        self.system_prompt: str | None = None
-
-    async def stream_response(self, prompt: str, system_prompt: str | None = None) -> AsyncIterator[str]:
-        assert prompt == "What is deployed?"
-        self.system_prompt = system_prompt
-        yield "Context received."
 
 
 def run_job(job_id: UUID, bus: CapturingBus, llm: object) -> None:
@@ -67,15 +56,6 @@ def test_chat_job_surfaces_provider_failure_without_sticking_active() -> None:
     assert states == [PlattState.THINKING, PlattState.CONCERNED, PlattState.IDLE]
     assert deltas[-1].done is True
     assert "couldn't complete" in "".join(event.delta for event in deltas)
-
-
-def test_chat_job_passes_a_scoped_system_prompt_to_the_llm() -> None:
-    bus = CapturingBus()
-    llm = ContextTestLLM()
-
-    asyncio.run(stream_chat_job(job_id=uuid4(), bus=bus, llm=llm, prompt="What is deployed?", system_prompt="Repository inventory: 3 files."))
-
-    assert llm.system_prompt == "Repository inventory: 3 files."
 
 
 def test_chat_job_explains_missing_configuration_without_exposing_an_exception() -> None:

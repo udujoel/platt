@@ -12,7 +12,7 @@ class LLMConfigurationError(RuntimeError):
 
 
 class StreamingLLM(Protocol):
-    async def stream_response(self, prompt: str, system_prompt: str | None = None) -> AsyncIterator[str]:
+    async def stream_response(self, prompt: str) -> AsyncIterator[str]:
         """Yield text deltas for one tool-free response."""
 
 
@@ -21,7 +21,7 @@ class AnthropicStreamingLLM:
         self._api_key = api_key
         self._model = model
 
-    async def stream_response(self, prompt: str, system_prompt: str | None = None) -> AsyncIterator[str]:
+    async def stream_response(self, prompt: str) -> AsyncIterator[str]:
         # Keep this lazy so local UI and contract tests do not require a live provider.
         from anthropic import AsyncAnthropic
 
@@ -29,7 +29,7 @@ class AnthropicStreamingLLM:
         async with client.messages.stream(
             model=self._model,
             max_tokens=1024,
-            system=system_prompt or (
+            system=(
                 "You are Platt, an embodied DevOps agent. Be concise, practical, and "
                 "do not claim to have executed tools you have not been given."
             ),
@@ -41,8 +41,8 @@ class AnthropicStreamingLLM:
 
 
 class UnconfiguredLLM:
-    async def stream_response(self, prompt: str, system_prompt: str | None = None) -> AsyncIterator[str]:
-        del prompt, system_prompt
+    async def stream_response(self, prompt: str) -> AsyncIterator[str]:
+        del prompt
         raise LLMConfigurationError(
             "Anthropic is not configured. Set ANTHROPIC_API_KEY to stream a live Platt response."
         )

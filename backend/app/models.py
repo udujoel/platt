@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from enum import StrEnum
 from pathlib import Path
-from typing import Annotated, Any, Literal, Union
+from typing import Annotated, Literal, Union
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -171,66 +171,6 @@ class TerraformModuleReference(BaseModel):
     source: str
 
 
-class TerraformModuleNode(BaseModel):
-    path: str
-    variables: list[str] = Field(default_factory=list)
-    outputs: list[str] = Field(default_factory=list)
-
-
-class TerraformModuleEdge(BaseModel):
-    caller_path: str
-    module_name: str
-    source: str
-    target_path: str
-
-
-class TerraformModuleTrace(BaseModel):
-    module_path: str
-    path_to_root: list[str]
-    edges: list[TerraformModuleEdge]
-
-
-RepositoryToolName = Literal["read_file", "glob", "grep"]
-
-
-class RepositoryToolDefinition(BaseModel):
-    name: RepositoryToolName
-    description: str
-    input_schema: dict[str, Any]
-
-
-class RepositoryToolInvocation(BaseModel):
-    tool: RepositoryToolName
-    arguments: dict[str, str] = Field(default_factory=dict, max_length=2)
-
-
-class RepositoryFileReadResult(BaseModel):
-    path: str
-    content: str
-
-
-class RepositoryGlobResult(BaseModel):
-    paths: list[str]
-    truncated: bool = False
-
-
-class RepositorySearchMatch(BaseModel):
-    path: str
-    line_number: int = Field(ge=1)
-    line: str
-
-
-class RepositoryGrepResult(BaseModel):
-    matches: list[RepositorySearchMatch]
-    scanned_files: int = Field(ge=0)
-    truncated: bool = False
-
-
-class RepositoryToolResponse(BaseModel):
-    tool: RepositoryToolName
-    result: Union[RepositoryFileReadResult, RepositoryGlobResult, RepositoryGrepResult]
-
-
 class PipelinePathFilter(BaseModel):
     scope: Literal["trigger", "pr", "schedules"]
     include_paths: list[str] = Field(default_factory=list)
@@ -248,6 +188,4 @@ class OnboardingRecord(BaseModel):
     created_at: datetime
     files: list[FileInventoryEntry]
     terraform_modules: list[TerraformModuleReference]
-    terraform_module_nodes: list[TerraformModuleNode] = Field(default_factory=list)
-    terraform_module_edges: list[TerraformModuleEdge] = Field(default_factory=list)
     pipeline_yamls: list[PipelineYamlInventory]
