@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { ChevronRight, CircleAlert, ClipboardList, Play, RefreshCw, SendHorizonal } from "lucide-react";
 import { create } from "zustand";
 import "./styles.css";
+import { ReconnectPolicy } from "./reconnect-policy";
 
 type PlattState =
   | "idle"
@@ -344,7 +345,7 @@ function useBackendEvents() {
     let socket: WebSocket | null = null;
     let retryTimer: number | undefined;
     let stabilityTimer: number | undefined;
-    let retryAttempt = 0;
+    const retryPolicy = new ReconnectPolicy();
     let hasConnected = false;
     let recovering = false;
     let recoveryVersion = 0;
@@ -358,7 +359,7 @@ function useBackendEvents() {
     };
 
     const markConnectionStable = () => {
-      retryAttempt = 0;
+      retryPolicy.reset();
       window.clearTimeout(stabilityTimer);
       stabilityTimer = undefined;
     };
@@ -395,8 +396,7 @@ function useBackendEvents() {
 
     const scheduleReconnect = () => {
       if (closed || retryTimer !== undefined) return;
-      const delay = Math.min(1000 * 2 ** retryAttempt, 10_000);
-      retryAttempt += 1;
+      const delay = retryPolicy.nextDelayMs();
       retryTimer = window.setTimeout(() => {
         retryTimer = undefined;
         connect();
