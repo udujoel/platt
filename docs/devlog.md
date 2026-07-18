@@ -3,6 +3,13 @@
 This is the concise, human-readable record of validated delivery decisions.
 Detailed implementation and release notes belong in the PR and changelog.
 
+## 2026-07-18 — Visible backend readiness
+
+- The connected frontend now polls `/ready` on load and every 30 seconds, then
+  displays backend readiness independently from its WebSocket connection state.
+- An unreadable or malformed readiness response is shown as unavailable rather
+  than being mistaken for a healthy backend.
+
 ## 2026-07-18 — Persistence-aware readiness probe
 
 - Added a provider-neutral `/ready` endpoint that checks the active SQLite

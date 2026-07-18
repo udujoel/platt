@@ -64,6 +64,8 @@ completed 3D implementation.
 - Hosted frontend builds without explicitly configured API and WebSocket URLs
   now render a configuration-required screen instead of silently attempting a
   visitor's local backend.
+- Connected frontends now surface backend readiness separately from WebSocket
+  connection status, using the provider-neutral `/ready` contract.
 - Do not add a paid service, secret, or ownership/access change without user
   direction.
 
