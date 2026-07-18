@@ -18,6 +18,9 @@ patch version.
   recover persisted event history in stable order without duplicate rendering.
 - Explicit per-step execution for pre-planned read-only repository work, with
   bounded results and audit events linked to the original plan job.
+- Content-free execution receipts for completed repository-plan steps, saved
+  with their original job event history so operators can inspect returned byte,
+  path, or match counts without persisting repository content.
 - Automated frontend retry-policy coverage, including exponential backoff,
   capped delays, and stable-connection resets, enforced in CI.
 - A validated `PLATT_ALLOWED_ORIGIN_REGEX` backend setting for explicit API

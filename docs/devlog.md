@@ -3,6 +3,16 @@
 This is the concise, human-readable record of validated delivery decisions.
 Detailed implementation and release notes belong in the PR and changelog.
 
+## 2026-07-18 — Persisted read-only execution receipts
+
+- Completed repository-review plan steps now emit a bounded receipt into the
+  original plan job's persisted event history. File receipts record a path and
+  returned byte count; glob and grep receipts record result counts, scan scope,
+  and truncation when applicable.
+- The receipt is deliberately content-free, preserving the ability to audit an
+  explicit local read after the UI result disappears without copying untrusted
+  repository text or broadening repository-tool authority.
+
 ## 2026-07-18 — Visible backend readiness
 
 - The connected frontend now polls `/ready` on load and every 30 seconds, then

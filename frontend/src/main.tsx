@@ -8,6 +8,8 @@ import type { BackendConfiguration } from "./backend-config";
 import { ReconnectPolicy } from "./reconnect-policy";
 import { createBackendReadinessPoller } from "./readiness-status";
 import type { BackendReadiness } from "./readiness-status";
+import { describePersistedEvent } from "./job-event-description";
+import type { PersistedJobEvent } from "./job-event-description";
 
 type PlattState =
   | "idle"
@@ -20,19 +22,6 @@ type PlattState =
   | "concerned";
 
 type ConnectionState = "connecting" | "connected" | "disconnected";
-
-type BackendEventType =
-  | "agent_state"
-  | "chat_delta"
-  | "job_created"
-  | "work_item_moved"
-  | "pipeline_update"
-  | "plan_ready"
-  | "approval_required"
-  | "approval_result"
-  | "apply_result"
-  | "audit_entry"
-  | "dashboard_refresh";
 
 type EventBase = {
   id: string;
@@ -53,7 +42,7 @@ type BackendEvent =
   | (JobEvent & { type: "approval_required"; job_id: string; approval_id: string; summary: string })
   | (JobEvent & { type: "approval_result"; job_id: string; approval_id: string; approved: boolean })
   | (JobEvent & { type: "apply_result"; job_id: string; success: boolean; summary: string })
-  | (JobEvent & { type: "audit_entry"; job_id: string; tool: string; action: string; outcome: string })
+  | (JobEvent & { type: "audit_entry"; job_id: string; tool: string; action: string; outcome: string; step_id?: string | null; summary?: string | null })
   | (EventBase & { type: "dashboard_refresh"; metrics: Record<string, string | number> });
 
 type EventEntry = {
@@ -129,14 +118,6 @@ type RepositoryInspectionPlanResponse = {
 type RepositoryToolResponse = {
   tool: "read_file" | "glob" | "grep";
   result: unknown;
-};
-
-type PersistedJobEvent = {
-  id: string;
-  job_id: string;
-  type: BackendEventType;
-  payload: string;
-  created_at: string;
 };
 
 type AsyncState<T> = {
@@ -220,7 +201,12 @@ function parseBackendEvent(value: unknown): BackendEvent | null {
     case "apply_result":
       return hasJobId(value) && typeof value.success === "boolean" && hasString(value, "summary") ? (value as BackendEvent) : null;
     case "audit_entry":
-      return hasJobId(value) && ["tool", "action", "outcome"].every((key) => hasString(value, key)) ? (value as BackendEvent) : null;
+      return hasJobId(value)
+        && ["tool", "action", "outcome"].every((key) => hasString(value, key))
+        && (value.step_id === undefined || value.step_id === null || typeof value.step_id === "string")
+        && (value.summary === undefined || value.summary === null || typeof value.summary === "string")
+        ? (value as BackendEvent)
+        : null;
     case "dashboard_refresh":
       return isRecord(value.metrics) && Object.values(value.metrics).every((metric) => typeof metric === "string" || typeof metric === "number") ? (value as BackendEvent) : null;
     default:
@@ -748,41 +734,6 @@ const initialJobEventsState: AsyncState<PersistedJobEvent[]> = { data: [], loadi
 function formatDateTime(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "Unknown time" : date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
-}
-
-function describePersistedEvent(event: PersistedJobEvent) {
-  let payload: Record<string, unknown> = {};
-  try {
-    const parsed: unknown = JSON.parse(event.payload);
-    if (!isRecord(parsed)) throw new Error("Invalid event payload");
-    payload = parsed;
-  } catch {
-    return { title: event.type.replace(/_/g, " "), detail: "Event payload could not be read." };
-  }
-
-  switch (event.type) {
-    case "agent_state":
-      return { title: String(payload.label ?? "Agent state changed"), detail: String(payload.state ?? "state") };
-    case "chat_delta":
-      return { title: payload.done ? "Response complete" : "Response streamed", detail: String(payload.delta ?? "") || "No visible text" };
-    case "job_created":
-      return { title: "Job accepted", detail: String(payload.prompt ?? "") };
-    case "work_item_moved":
-      return { title: String(payload.title ?? "Work item moved"), detail: `${String(payload.from_state ?? "Unknown")} → ${String(payload.to_state ?? "Unknown")}` };
-    case "pipeline_update":
-      return { title: String(payload.pipeline_name ?? "Pipeline updated"), detail: String(payload.status ?? "Unknown") };
-    case "plan_ready":
-    case "apply_result":
-      return { title: event.type === "plan_ready" ? "Plan ready" : "Apply result", detail: String(payload.summary ?? "") };
-    case "approval_required":
-      return { title: "Approval required", detail: String(payload.summary ?? "") };
-    case "approval_result":
-      return { title: "Approval recorded", detail: payload.approved ? "Approved" : "Not approved" };
-    case "audit_entry":
-      return { title: `${String(payload.tool ?? "Tool")} · ${String(payload.action ?? "action")}`, detail: String(payload.outcome ?? "") };
-    default:
-      return { title: event.type.replace(/_/g, " "), detail: "Backend event recorded" };
-  }
 }
 
 function AuditInspector({

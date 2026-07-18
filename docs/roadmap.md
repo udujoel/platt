@@ -42,8 +42,10 @@ completed 3D implementation.
   plans with explicit tool inputs, outputs, and audit records. Plan creation
   cannot execute repository tools.
 - An operator can explicitly run one pre-planned read-only step; the result and
-  audit event are attached to that original plan job. Arbitrary tool input and
-  automatic execution remain unavailable.
+  audit event are attached to that original plan job. Completed steps now also
+  record a bounded, content-free receipt in its persisted event history, so the
+  original action remains inspectable after the transient UI result is gone.
+  Arbitrary tool input and automatic execution remain unavailable.
 - Added a bounded persisted-event recovery window with deterministic ordering;
   the local client uses capped retry backoff and rehydrates that window after a
   WebSocket reconnect without duplicating live events.
