@@ -395,6 +395,18 @@ def test_repository_tool_result_summary_is_content_free_and_bounded(
     assert repository_tool_result_summary(response) == expected
 
 
+def test_repository_tool_result_summary_bounds_a_deep_inventory_path() -> None:
+    path = "nested/" * 90 + "versions.tf"
+
+    summary = repository_tool_result_summary(
+        RepositoryToolResponse(tool="read_file", result=RepositoryFileReadResult(path=path, content="x"))
+    )
+
+    assert len(summary) == 512
+    assert summary.startswith("Read …")
+    assert summary.endswith("versions.tf; returned 1 bytes.")
+
+
 def test_repository_review_plan_only_uses_persisted_inventory_paths(tmp_path: Path) -> None:
     repository = tmp_path / "repository"
     repository.mkdir()

@@ -46,6 +46,7 @@ MAX_GLOB_RESULTS = 500
 MAX_GREP_BYTES = 1_000_000
 MAX_GREP_MATCHES = 100
 MAX_GREP_LINE_CHARS = 500
+MAX_RECEIPT_SUMMARY_CHARS = 512
 TRUSTED_ONBOARDING_ROOT_ENV = "PLATT_ONBOARDING_ROOT"
 IGNORED_DIRECTORY_NAMES = {".git", ".terraform", "node_modules", ".venv", "venv", "__pycache__"}
 TERRAFORM_MODULE_START_RE = re.compile(r'(?m)^\s*module\s+"(?P<name>[^"]+)"\s*\{')
@@ -431,7 +432,13 @@ def repository_tool_result_summary(response: RepositoryToolResponse) -> str:
 
     result = response.result
     if isinstance(result, RepositoryFileReadResult):
-        return f"Read {result.path}; returned {len(result.content.encode('utf-8'))} bytes."
+        byte_count = len(result.content.encode("utf-8"))
+        suffix = f"; returned {byte_count} bytes."
+        path_budget = MAX_RECEIPT_SUMMARY_CHARS - len("Read ") - len(suffix)
+        path = result.path
+        if len(path) > path_budget:
+            path = f"…{path[-(path_budget - 1):]}"
+        return f"Read {path}{suffix}"
     if isinstance(result, RepositoryGlobResult):
         summary = f"Listed {len(result.paths)} inventory paths."
     elif isinstance(result, RepositoryGrepResult):
