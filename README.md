@@ -44,6 +44,9 @@ Implemented:
 - Audited read-only repository tools for an onboarding record: bounded file reads,
   inventory globbing, and literal content search. Every invocation revalidates the
   trusted checkout and rejects paths outside the recorded inventory.
+- A repeatable ten-question acceptance suite over `seed-infra`, covering module
+  traces, pipeline discovery, provider posture, resource definitions, and
+  governance conventions through the onboarding APIs.
 - React/Vite shell with the audit inspector, chat panel, animated office, speech bubble, and state-specific Platt rig.
 - Orca work packages for planning, backend, frontend, and operations.
 
