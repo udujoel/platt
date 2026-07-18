@@ -7,6 +7,8 @@ patch version.
 
 ## Unreleased
 
+## [0.2.0] — 2026-07-18
+
 ### Added
 
 - A frontend local-repository onboarding workflow that surfaces bounded file,

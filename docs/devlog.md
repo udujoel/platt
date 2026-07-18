@@ -3,6 +3,13 @@
 This is the concise, human-readable record of validated delivery decisions.
 Detailed implementation and release notes belong in the PR and changelog.
 
+## 2026-07-18 — 0.2.0 release candidate
+
+- Aligned the backend and frontend package declarations, changelog, roadmap,
+  and release policy on the bounded repository-intelligence checkpoint.
+- The release remains subject to the normal PR checks, CodeRabbit approval,
+  deployment verification, and a tag from the verified merge commit.
+
 ## 2026-07-18 — Repository-bound plan execution
 
 - Repository-review jobs now persist the onboarding record that created them,

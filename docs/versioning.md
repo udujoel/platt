@@ -2,7 +2,7 @@
 
 ## Source of truth
 
-The current delivery version is `0.1.1`, declared in
+The current delivery version is `0.2.0`, declared in
 `backend/pyproject.toml` and `frontend/package.json`. A release must update
 both declarations, `CHANGELOG.md`, this policy when needed, the roadmap, and
 the development log. A verified release merge is tagged `vMAJOR.MINOR.PATCH`.
@@ -17,9 +17,8 @@ The `0.1.0` Phase 1 baseline predates this release policy and has no Git tag.
 - Major (`1.0.0`): the mandatory R3F 3D character release. It must preserve
   the truthful event mapping and include accessibility and fallback evidence.
 
-The next planned capability checkpoint after this reliability release is
-`0.2.0`. The `0.1.1` delivery version must not be tagged until its PR has
-passed the required gates, review handling, and deployment verification.
+The `0.2.0` delivery version must not be tagged until its release PR has passed
+the required gates, review handling, and deployment verification.
 
 ## Required release evidence
 
