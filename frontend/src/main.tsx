@@ -140,6 +140,7 @@ type EventStore = {
   connection: ConnectionState;
   events: EventEntry[];
   messages: ChatMessage[];
+  seenBackendEventIds: string[];
   setConnection: (connection: ConnectionState) => void;
   applyBackendEvent: (event: BackendEvent) => void;
   addOperatorMessage: (text: string) => void;
@@ -231,6 +232,7 @@ const useEventStore = create<EventStore>((set) => ({
       text: "Phase 1 interface ready. Connect the backend to stream live events.",
     },
   ],
+  seenBackendEventIds: [],
   setConnection: (connection) =>
     set((current) => ({
       connection,
@@ -265,8 +267,12 @@ const useEventStore = create<EventStore>((set) => ({
     })),
   applyBackendEvent: (event) =>
     set((current) => {
+      if (current.seenBackendEventIds.includes(event.id)) return current;
+      const seenBackendEventIds = [...current.seenBackendEventIds, event.id].slice(-200);
+
       if (event.type === "agent_state" && event.state && event.label) {
         return {
+          seenBackendEventIds,
           state: event.state,
           events: [
             {
@@ -282,6 +288,7 @@ const useEventStore = create<EventStore>((set) => ({
 
       if (event.type === "job_created") {
         return {
+          seenBackendEventIds,
           events: [
             {
               id: event.id,
@@ -295,7 +302,7 @@ const useEventStore = create<EventStore>((set) => ({
       }
 
       if (event.type !== "chat_delta" || !event.job_id || event.delta === undefined) {
-        return current;
+        return { seenBackendEventIds };
       }
 
       const existingMessage = current.messages.find((message) => message.jobId === event.job_id);
@@ -320,7 +327,7 @@ const useEventStore = create<EventStore>((set) => ({
             },
           ];
 
-      return { messages: nextMessages };
+      return { seenBackendEventIds, messages: nextMessages };
     }),
 }));
 
@@ -331,37 +338,86 @@ function useBackendEvents() {
     let closed = false;
     let socket: WebSocket | null = null;
     let retryTimer: number | undefined;
+    let retryAttempt = 0;
+    let hasConnected = false;
+    let recovering = false;
+    let recoveryVersion = 0;
+    let queuedEvents: BackendEvent[] = [];
+
+    const deliver = (event: BackendEvent) => {
+      useEventStore.getState().applyBackendEvent(event);
+      setLastEvent(event);
+    };
+
+    const hydrateAfterReconnect = async () => {
+      const activeRecovery = ++recoveryVersion;
+      recovering = true;
+      const recoveredEvents: BackendEvent[] = [];
+      try {
+        const response = await requestJson<{ events: unknown[] }>("/events/recent?limit=100");
+        for (const value of response.events) {
+          const event = parseBackendEvent(value);
+          if (event) recoveredEvents.push(event);
+        }
+      } catch {
+        if (!closed && activeRecovery === recoveryVersion) {
+          useEventStore.getState().addLocalEvent("concerned", "Could not recover persisted events after reconnect");
+        }
+      } finally {
+        if (closed || activeRecovery !== recoveryVersion) return;
+        recoveredEvents.forEach(deliver);
+        recovering = false;
+        const pendingEvents = queuedEvents;
+        queuedEvents = [];
+        pendingEvents.forEach(deliver);
+      }
+    };
+
+    const scheduleReconnect = () => {
+      if (closed || retryTimer !== undefined) return;
+      const delay = Math.min(1000 * 2 ** retryAttempt, 10_000);
+      retryAttempt += 1;
+      retryTimer = window.setTimeout(() => {
+        retryTimer = undefined;
+        connect();
+      }, delay);
+    };
 
     const connect = () => {
       useEventStore.getState().setConnection("connecting");
-      socket = new WebSocket(wsUrl);
+      const nextSocket = new WebSocket(wsUrl);
+      socket = nextSocket;
 
-      socket.addEventListener("open", () => {
+      nextSocket.addEventListener("open", () => {
         useEventStore.getState().setConnection("connected");
+        retryAttempt = 0;
+        if (hasConnected) void hydrateAfterReconnect();
+        hasConnected = true;
       });
 
-      socket.addEventListener("message", (message) => {
+      nextSocket.addEventListener("message", (message) => {
         try {
           const event = parseBackendEvent(JSON.parse(message.data) as unknown);
           if (!event) {
             useEventStore.getState().addLocalEvent("concerned", "Received an unsupported backend event");
             return;
           }
-          useEventStore.getState().applyBackendEvent(event);
-          setLastEvent(event);
+          if (recovering) queuedEvents.push(event);
+          else deliver(event);
         } catch {
           useEventStore.getState().addLocalEvent("concerned", "Received an unreadable backend event");
         }
       });
 
-      socket.addEventListener("close", () => {
+      nextSocket.addEventListener("close", () => {
+        if (socket === nextSocket) socket = null;
         if (closed) return;
         useEventStore.getState().setConnection("disconnected");
-        retryTimer = window.setTimeout(connect, 2500);
+        scheduleReconnect();
       });
 
-      socket.addEventListener("error", () => {
-        socket?.close();
+      nextSocket.addEventListener("error", () => {
+        nextSocket.close();
       });
     };
 
@@ -369,6 +425,7 @@ function useBackendEvents() {
 
     return () => {
       closed = true;
+      recoveryVersion += 1;
       window.clearTimeout(retryTimer);
       socket?.close();
     };

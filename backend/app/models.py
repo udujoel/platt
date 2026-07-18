@@ -131,6 +131,10 @@ Event = Annotated[
 ]
 
 
+class EventReplayResponse(BaseModel):
+    events: list[Event]
+
+
 class ChatRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=4000)
 

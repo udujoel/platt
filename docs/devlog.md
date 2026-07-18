@@ -3,6 +3,16 @@
 This is the concise, human-readable record of validated delivery decisions.
 Detailed implementation and release notes belong in the PR and changelog.
 
+## 2026-07-18 — Ordered event recovery after a local reconnect
+
+- Added a read-only, bounded recent-event replay endpoint and made persistence
+  ordering deterministic when timestamps tie. The local WebSocket client now
+  uses capped retry backoff, rehydrates the replay window after reconnecting,
+  de-duplicates known events, and flushes queued live events afterward.
+- Added automated ordering coverage for both replay and selected-job history.
+  The reconnect interaction remains local-only and does not add a remote side
+  effect.
+
 ## 2026-07-18 — Inspectable repository review plans
 
 - Added a deterministic, read-only review-plan endpoint that derives proposed

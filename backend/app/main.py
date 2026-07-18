@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.background_tasks import cancel_background_tasks
 from app.event_bus import event_bus
 from app.persistence import Persistence
-from app.routers import audit, chat, dev, health, jobs, onboarding, ws
+from app.routers import audit, chat, dev, events, health, jobs, onboarding, ws
 from app.services.onboarding import OnboardingStore
 
 
@@ -47,6 +47,7 @@ def create_app(
     app.include_router(chat.router)
     app.include_router(dev.router)
     app.include_router(jobs.router)
+    app.include_router(events.router)
     app.include_router(audit.router)
     app.include_router(onboarding.router)
     app.include_router(ws.router)
