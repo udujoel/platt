@@ -40,6 +40,9 @@ Implemented:
   process can read its SQLite persistence before a host routes traffic to it.
   Chat uses a swappable Anthropic streaming client and publishes typed state
   and delta events.
+- Connected frontends show a separate backend readiness indicator, polling
+  `/ready` on load and every 30 seconds so a socket connection is not mistaken
+  for a ready persistence layer.
 - Local-only repository onboarding via `POST /onboarding`: inventories bounded files,
   Terraform module sources, a local Terraform module graph (variables, outputs, and
   safe relative-source edges), and Azure Pipeline YAML path filters, then persists the

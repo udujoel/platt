@@ -6,6 +6,8 @@ import "./styles.css";
 import { resolveBackendConfiguration } from "./backend-config";
 import type { BackendConfiguration } from "./backend-config";
 import { ReconnectPolicy } from "./reconnect-policy";
+import { createBackendReadinessPoller } from "./readiness-status";
+import type { BackendReadiness } from "./readiness-status";
 
 type PlattState =
   | "idle"
@@ -465,6 +467,22 @@ function useBackendEvents() {
   return lastEvent;
 }
 
+function useBackendReadiness(): BackendReadiness {
+  const [readiness, setReadiness] = React.useState<BackendReadiness>("checking");
+
+  React.useEffect(() => {
+    const poller = createBackendReadinessPoller({
+      requestReadiness: (signal) => requestJson<unknown>("/ready", { signal }),
+      onReadiness: setReadiness,
+    });
+
+    poller.start();
+    return () => poller.stop();
+  }, []);
+
+  return readiness;
+}
+
 async function requestJson<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`${apiBaseUrl}${path}`, options);
 
@@ -530,7 +548,7 @@ function OfficeScene({ state, speech }: { state: PlattState; speech: string }) {
   </div>;
 }
 
-function Stage() {
+function Stage({ readiness }: { readiness: BackendReadiness }) {
   const state = useEventStore((store) => store.state);
   const connection = useEventStore((store) => store.connection);
   const messages = useEventStore((store) => store.messages);
@@ -541,6 +559,7 @@ function Stage() {
       <div className="stageHeader">
         <StatusChip state={state} />
         <span className={`connectionBadge ${connection}`}>{connection}</span>
+        <span className={`readinessBadge ${readiness}`} aria-live="polite">backend {readiness}</span>
       </div>
       <OfficeScene state={state} speech={latestPlattMessage} />
       <div className="stageFooter">
@@ -1078,6 +1097,7 @@ function ChatPanel({
 
 function ConnectedApp() {
   const lastEvent = useBackendEvents();
+  const readiness = useBackendReadiness();
   const [selectedJobId, setSelectedJobId] = React.useState<string | null>(null);
   const [onboardingRecord, setOnboardingRecord] = React.useState<OnboardingRecord | null>(null);
   const selectJob = React.useCallback((jobId: string) => setSelectedJobId(jobId), []);
@@ -1092,7 +1112,7 @@ function ConnectedApp() {
         onOnboardingRecordChange={setOnboardingRecord}
         onPlanJobAccepted={selectJob}
       />
-      <Stage />
+      <Stage readiness={readiness} />
       <ChatPanel onJobAccepted={selectJob} onboardingRecord={onboardingRecord} />
     </main>
   );

@@ -28,6 +28,8 @@ patch version.
   instead of attempting their visitor's local development backend.
 - A provider-neutral `/ready` endpoint that confirms the process can read its
   SQLite persistence before a host sends it traffic.
+- A frontend backend-readiness indicator that polls `/ready` separately from
+  the event-socket connection state.
 
 ## [0.1.1] — 2026-07-18
 
