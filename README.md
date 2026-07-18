@@ -1,12 +1,12 @@
 # Platt
 
-Platt is an embodied DevOps agent for Azure DevOps and Azure. This repository delivers the Phase 1 event slice: a FastAPI streaming backend and a React/Vite browser shell with an animated low-poly 2D office stage.
+Platt is an embodied DevOps agent for Azure DevOps and Azure. This repository delivers the Phase 1 event slice: a FastAPI streaming backend and a React/Vite browser shell with an animated office stage. The in-progress 3D R3F view preserves the 2D stage as its non-WebGL and reduced-motion fallback.
 
 ## Repository Map
 
 ```text
 backend/     FastAPI app, event contract, websocket, persisted streaming chat job
-frontend/    React + Vite shell, animated 2D office stage, audit and chat UI
+frontend/    React + Vite shell, progressive 3D/2D office stage, audit and chat UI
 artefacts/   PRD and planning reports
 docs/        development, CI, repository governance
 ```
@@ -66,12 +66,16 @@ Implemented:
 - A reconnecting local event client with capped retry backoff. After a socket
   reconnect, it recovers a bounded, persisted event window in stable order and
   de-duplicates it against live delivery.
-- React/Vite shell with the audit inspector, chat panel, animated office, speech bubble, and state-specific Platt rig.
+- React/Vite shell with the audit inspector, chat panel, and a state-specific
+  Platt rig. Browsers with WebGL and no reduced-motion preference load a
+  lightweight R3F office scene; all other browsers retain the animated 2D
+  office stage.
 - Orca work packages for planning, backend, frontend, and operations.
 
 Not implemented yet:
 
-- Azure DevOps integration, Terraform tools, Azure MCP integration, real 3D assets, private GitHub publish, and a production API host.
+- Azure DevOps integration, Terraform tools, Azure MCP integration, production
+  3D assets, private GitHub publish, and a production API host.
 
 Set `ANTHROPIC_API_KEY` to enable live streaming replies. Without it, Platt streams a safe configuration message and returns to idle; `/dev/state-cycle` remains available to exercise every visual state without credentials.
 

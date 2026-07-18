@@ -17,8 +17,9 @@ The `0.1.0` Phase 1 baseline predates this release policy and has no Git tag.
 - Major (`1.0.0`): the mandatory R3F 3D character release. It must preserve
   the truthful event mapping and include accessibility and fallback evidence.
 
-The `0.2.0` delivery version must not be tagged until its release PR has passed
-the required gates, review handling, and deployment verification.
+The `0.2.0` delivery version was tagged as `v0.2.0` from verified merge
+`46b447c`. The in-progress R3F foundation remains unreleased and does not
+itself constitute the required 1.0 acceptance evidence.
 
 ## Required release evidence
 
