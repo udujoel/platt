@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 import pytest
 from fastapi.testclient import TestClient
@@ -79,21 +80,38 @@ def test_seed_question_7_reads_the_azurerm_provider_constraint(onboarded_seed_re
     client, onboarding_id = onboarded_seed_repository
     result = invoke_tool(client, onboarding_id, "read_file", {"path": "versions.tf"})
 
-    assert 'version = "~> 4.0"' in result["content"]
+    assert re.search(
+        r'required_providers\s*\{.*?azurerm\s*=\s*\{.*?source\s*=\s*"hashicorp/azurerm".*?version\s*=\s*"~> 4\.0"',
+        result["content"],
+        re.DOTALL,
+    )
 
 
 def test_seed_question_8_reads_storage_network_default_deny(onboarded_seed_repository: tuple[TestClient, str]) -> None:
     client, onboarding_id = onboarded_seed_repository
     result = invoke_tool(client, onboarding_id, "read_file", {"path": "modules/storage-account/main.tf"})
 
-    assert 'default_action = "Deny"' in result["content"]
+    assert re.search(
+        r'resource\s+"azurerm_storage_account"\s+"this"\s*\{.*?network_rules\s*\{.*?default_action\s*=\s*"Deny"',
+        result["content"],
+        re.DOTALL,
+    )
 
 
 def test_seed_question_9_finds_required_governance_tags(onboarded_seed_repository: tuple[TestClient, str]) -> None:
     client, onboarding_id = onboarded_seed_repository
-    result = invoke_tool(client, onboarding_id, "grep", {"query": "CostCenter"})
+    result = invoke_tool(client, onboarding_id, "read_file", {"path": "main.tf"})
 
-    assert any(match["path"] == "main.tf" for match in result["matches"])
+    assert re.search(
+        r'mandatory_tag_keys\s*=\s*\{.*?CostCenter\s*=\s*"costcenter"',
+        result["content"],
+        re.DOTALL,
+    )
+    assert re.search(
+        r'module\s+"storage_account"\s*\{.*?tags\s*=\s*local\.common_tags',
+        result["content"],
+        re.DOTALL,
+    )
 
 
 def test_seed_question_10_finds_the_dev_only_environment_guard(onboarded_seed_repository: tuple[TestClient, str]) -> None:
