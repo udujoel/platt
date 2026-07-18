@@ -1,5 +1,7 @@
 import asyncio
+import json
 import sqlite3
+from datetime import datetime, timezone
 from threading import Event as ThreadEvent
 from threading import Thread
 from uuid import uuid4
@@ -101,6 +103,31 @@ def test_websocket_receives_phase_1_events(client: TestClient) -> None:
         assert event["job_id"] == str(job_id)
         assert event["state"] == PlattState.THINKING
         assert event["label"] == "Planning response"
+
+
+def test_recent_events_replay_and_job_history_preserve_publication_order(client: TestClient) -> None:
+    job_id = uuid4()
+    created_at = datetime(2026, 7, 18, 1, 0, tzinfo=timezone.utc)
+    first = AgentStateEvent(job_id=job_id, state=PlattState.THINKING, label="First", created_at=created_at)
+    second = AgentStateEvent(job_id=job_id, state=PlattState.WORKING, label="Second", created_at=created_at)
+    third = AgentStateEvent(job_id=job_id, state=PlattState.TALKING, label="Third", created_at=created_at)
+    client.app.state.persistence.record_job(job_id, prompt="Ordered replay")
+    client.app.state.persistence.record_event(first)
+    client.app.state.persistence.record_event(second)
+    client.app.state.persistence.record_event(third)
+
+    replay = client.get("/events/recent", params={"limit": 2})
+    history = client.get(f"/jobs/{job_id}/events")
+
+    assert replay.status_code == 200
+    assert [event["label"] for event in replay.json()["events"]] == ["Second", "Third"]
+    assert [json.loads(event["payload"])["label"] for event in history.json()["events"]] == ["First", "Second", "Third"]
+
+
+def test_recent_events_replay_rejects_an_unbounded_limit(client: TestClient) -> None:
+    response = client.get("/events/recent", params={"limit": 101})
+
+    assert response.status_code == 422
 
 
 def test_chat_job_is_persisted_with_event_and_audit_entry(client: TestClient) -> None:

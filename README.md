@@ -51,6 +51,9 @@ Implemented:
   facts, prepares an explicit read-only review-plan preview, then scopes
   subsequent chat requests to that onboarding record. Preparing the preview
   records an audit event but does not run its listed tools.
+- A reconnecting local event client with capped retry backoff. After a socket
+  reconnect, it recovers a bounded, persisted event window in stable order and
+  de-duplicates it against live delivery.
 - React/Vite shell with the audit inspector, chat panel, animated office, speech bubble, and state-specific Platt rig.
 - Orca work packages for planning, backend, frontend, and operations.
 

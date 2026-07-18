@@ -41,8 +41,12 @@ completed 3D implementation.
 - Started turning discovered repository facts into inspectable, bounded job
   plans with explicit tool inputs, outputs, and audit records. Plan creation
   cannot execute repository tools.
-- Add tests for path boundaries, refusal behavior, retries, reconnects, and
-  event ordering before enabling any remote side effect.
+- Added a bounded persisted-event recovery window with deterministic ordering;
+  the local client uses capped retry backoff and rehydrates that window after a
+  WebSocket reconnect without duplicating live events.
+- Extend automated coverage for retry/reconnect behaviour, alongside the
+  existing path-boundary, refusal, and event-ordering coverage, before enabling
+  any remote side effect.
 
 ### 0.3 — Deployable service boundary
 

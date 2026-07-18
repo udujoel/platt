@@ -122,11 +122,25 @@ class Persistence:
                 select id, job_id, type, payload, created_at
                 from events
                 where job_id = ?
-                order by created_at asc
+                order by created_at asc, rowid asc
                 """,
                 (str(job_id),),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def list_recent_events(self, limit: int) -> list[dict[str, Any]]:
+        """Return a bounded replay window in stable publication order."""
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                select id, job_id, type, payload, created_at
+                from events
+                order by created_at desc, rowid desc
+                limit ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in reversed(rows)]
 
     def list_audit_entries(self, job_id: UUID | None = None) -> list[dict[str, Any]]:
         query = "select id, job_id, tool, action, outcome, created_at from audit_entries"

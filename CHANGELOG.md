@@ -14,6 +14,8 @@ patch version.
   onboarding record.
 - An audited read-only repository review-plan preview that shows bounded tool
   inputs and expected outputs without executing a tool.
+- A bounded recent-event replay endpoint and reconnecting local client that
+  recover persisted event history in stable order without duplicate rendering.
 
 ## [0.1.1] — 2026-07-18
 
