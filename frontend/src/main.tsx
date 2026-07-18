@@ -83,6 +83,25 @@ type Job = {
   updated_at: string;
 };
 
+type OnboardingModuleNode = {
+  path: string;
+  variables: string[];
+  outputs: string[];
+};
+
+type OnboardingPipeline = {
+  file_path: string;
+};
+
+type OnboardingRecord = {
+  id: string;
+  repository_path: string;
+  created_at: string;
+  files: Array<{ path: string; size_bytes: number }>;
+  terraform_module_nodes: OnboardingModuleNode[];
+  pipeline_yamls: OnboardingPipeline[];
+};
+
 type PersistedJobEvent = {
   id: string;
   job_id: string;
@@ -343,7 +362,14 @@ async function requestJson<T>(path: string, options: RequestInit = {}): Promise<
   const response = await fetch(`${apiBaseUrl}${path}`, options);
 
   if (!response.ok) {
-    throw new Error(`Request failed: ${response.status}`);
+    let detail = "";
+    try {
+      const payload: unknown = await response.json();
+      if (isRecord(payload) && typeof payload.detail === "string") detail = payload.detail;
+    } catch {
+      // Keep the HTTP status as the actionable fallback when an error has no JSON body.
+    }
+    throw new Error(detail || `Request failed: ${response.status}`);
   }
 
   return response.json() as Promise<T>;
@@ -427,6 +453,80 @@ function StatusChip({ state }: { state: PlattState }) {
   );
 }
 
+function repositoryName(path: string) {
+  const segments = path.split("/").filter(Boolean);
+  return segments[segments.length - 1] ?? path;
+}
+
+function RepositoryContext({
+  record,
+  onRecordChange,
+}: {
+  record: OnboardingRecord | null;
+  onRecordChange: (record: OnboardingRecord) => void;
+}) {
+  const [repositoryPath, setRepositoryPath] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const modulePreview = record?.terraform_module_nodes.slice(0, 3).map((module) => module.path === "." ? "root" : module.path).join(", ");
+
+  const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const path = repositoryPath.trim();
+    if (!path || busy) return;
+
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await postJson<OnboardingRecord>("/onboarding", { repository_path: path });
+      onRecordChange(response);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not onboard this repository.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="auditSection repositoryContext" aria-labelledby="repository-heading">
+      <header className="auditHeader">
+        <div>
+          <p className="eyebrow">Repository context</p>
+          <h1 id="repository-heading">Onboard a local repo</h1>
+        </div>
+        <span className={`repositoryStatus ${record ? "ready" : ""}`}>{record ? "Ready" : "Local only"}</span>
+      </header>
+      <p className="repositoryIntro">Index a checked-out repository that is inside the backend’s configured onboarding root. Platt only reads its bounded inventory.</p>
+      <form className="onboardingForm" onSubmit={onSubmit}>
+        <label htmlFor="repository-path">Repository path</label>
+        <div>
+          <input
+            id="repository-path"
+            value={repositoryPath}
+            disabled={busy}
+            onChange={(event) => setRepositoryPath(event.target.value)}
+            placeholder="/workspace/checked-out-repository"
+          />
+          <button type="submit" disabled={busy || !repositoryPath.trim()}>{busy ? "Indexing" : "Onboard"}</button>
+        </div>
+      </form>
+      {error ? <div className="repositoryError" role="alert">{error}</div> : null}
+      {record ? (
+        <div className="repositorySummary" aria-live="polite">
+          <strong title={record.repository_path}>{repositoryName(record.repository_path)}</strong>
+          <span>{record.repository_path}</span>
+          <dl>
+            <div><dt>Files</dt><dd>{record.files.length}</dd></div>
+            <div><dt>Modules</dt><dd>{record.terraform_module_nodes.length}</dd></div>
+            <div><dt>Pipelines</dt><dd>{record.pipeline_yamls.length}</dd></div>
+          </dl>
+          {modulePreview ? <p>Graph: {modulePreview}{record.terraform_module_nodes.length > 3 ? "…" : ""}</p> : <p>No Terraform module graph found.</p>}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 const initialAuditState: AsyncState<AuditEntry[]> = { data: [], loading: true, error: null };
 const initialJobState: AsyncState<Job | null> = { data: null, loading: false, error: null };
 const initialJobEventsState: AsyncState<PersistedJobEvent[]> = { data: [], loading: false, error: null };
@@ -475,10 +575,14 @@ function AuditInspector({
   selectedJobId,
   onSelectJob,
   lastEvent,
+  onboardingRecord,
+  onOnboardingRecordChange,
 }: {
   selectedJobId: string | null;
   onSelectJob: (jobId: string) => void;
   lastEvent: BackendEvent | null;
+  onboardingRecord: OnboardingRecord | null;
+  onOnboardingRecordChange: (record: OnboardingRecord) => void;
 }) {
   const [audit, setAudit] = React.useState<AsyncState<AuditEntry[]>>(initialAuditState);
   const [job, setJob] = React.useState<AsyncState<Job | null>>(initialJobState);
@@ -551,6 +655,7 @@ function AuditInspector({
 
   return (
     <aside className="auditPanel" aria-label="Audit and job inspector">
+      <RepositoryContext record={onboardingRecord} onRecordChange={onOnboardingRecordChange} />
       <section className="auditSection auditListSection" aria-labelledby="audit-heading">
         <header className="auditHeader">
           <div>
@@ -675,7 +780,13 @@ function JobEventSkeleton() {
   return <div className="skeletonStack eventSkeleton" aria-label="Loading job events"><span /><span /></div>;
 }
 
-function ChatPanel({ onJobAccepted }: { onJobAccepted: (jobId: string) => void }) {
+function ChatPanel({
+  onJobAccepted,
+  onboardingRecord,
+}: {
+  onJobAccepted: (jobId: string) => void;
+  onboardingRecord: OnboardingRecord | null;
+}) {
   const messages = useEventStore((store) => store.messages);
   const events = useEventStore((store) => store.events);
   const addOperatorMessage = useEventStore((store) => store.addOperatorMessage);
@@ -693,7 +804,8 @@ function ChatPanel({ onJobAccepted }: { onJobAccepted: (jobId: string) => void }
     setDraft("");
 
     try {
-      const response = await postJson<{ job_id: string }>("/chat", { prompt: text });
+      const path = onboardingRecord ? `/onboarding/${encodeURIComponent(onboardingRecord.id)}/chat` : "/chat";
+      const response = await postJson<{ job_id: string }>(path, { prompt: text });
       onJobAccepted(response.job_id);
     } catch {
       addLocalEvent("concerned", "Backend chat request failed");
@@ -716,7 +828,7 @@ function ChatPanel({ onJobAccepted }: { onJobAccepted: (jobId: string) => void }
         <header>
           <div>
             <h1>Platt</h1>
-            <p>Phase 1 event contract</p>
+            <p>{onboardingRecord ? `Scoped to ${repositoryName(onboardingRecord.repository_path)}` : "Phase 1 event contract"}</p>
           </div>
           <button className="cycleButton" type="button" onClick={runStateCycle} title="Run backend state cycle">
             <Play size={16} aria-hidden="true" />
@@ -749,14 +861,14 @@ function ChatPanel({ onJobAccepted }: { onJobAccepted: (jobId: string) => void }
       </div>
 
       <form className="composer" onSubmit={onSubmit}>
-        <label htmlFor="chat-input">Message</label>
+        <label htmlFor="chat-input">{onboardingRecord ? "Ask about this repository" : "Message"}</label>
         <div>
           <input
             id="chat-input"
             value={draft}
             disabled={busy}
             onChange={(event) => setDraft(event.target.value)}
-            placeholder="Send through backend /chat"
+            placeholder={onboardingRecord ? "Send through repository-aware chat" : "Send through backend /chat"}
           />
           <button type="submit" aria-label="Send message" title="Send message" disabled={busy}>
             <SendHorizonal size={18} aria-hidden="true" />
@@ -770,13 +882,20 @@ function ChatPanel({ onJobAccepted }: { onJobAccepted: (jobId: string) => void }
 function App() {
   const lastEvent = useBackendEvents();
   const [selectedJobId, setSelectedJobId] = React.useState<string | null>(null);
+  const [onboardingRecord, setOnboardingRecord] = React.useState<OnboardingRecord | null>(null);
   const selectJob = React.useCallback((jobId: string) => setSelectedJobId(jobId), []);
 
   return (
     <main className="appShell">
-      <AuditInspector selectedJobId={selectedJobId} onSelectJob={selectJob} lastEvent={lastEvent} />
+      <AuditInspector
+        selectedJobId={selectedJobId}
+        onSelectJob={selectJob}
+        lastEvent={lastEvent}
+        onboardingRecord={onboardingRecord}
+        onOnboardingRecordChange={setOnboardingRecord}
+      />
       <Stage />
-      <ChatPanel onJobAccepted={selectJob} />
+      <ChatPanel onJobAccepted={selectJob} onboardingRecord={onboardingRecord} />
     </main>
   );
 }

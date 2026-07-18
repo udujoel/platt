@@ -5,6 +5,14 @@ All notable product and delivery changes are recorded here. Platt follows
 capabilities use a minor version and backwards-compatible corrections use a
 patch version.
 
+## Unreleased
+
+### Added
+
+- A frontend local-repository onboarding workflow that surfaces bounded file,
+  Terraform graph, and pipeline counts, then scopes chat to the resulting
+  onboarding record.
+
 ## [0.1.1] — 2026-07-18
 
 ### Added
