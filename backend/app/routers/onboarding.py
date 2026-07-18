@@ -1,9 +1,16 @@
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import ValidationError
 
+from app.background_tasks import create_background_task
+from app.event_bus import event_bus
+from app.jobs import stream_chat_job
+from app.llm import create_llm_from_environment
 from app.models import (
+    ChatRequest,
+    ChatResponse,
+    JobCreatedEvent,
     OnboardingRecord,
     OnboardingRequest,
     RepositoryToolDefinition,
@@ -18,6 +25,7 @@ from app.services.onboarding import (
     OnboardingStore,
     execute_repository_tool,
     inspect_repository,
+    onboarding_system_prompt,
     repository_tool_definitions,
     trace_module,
 )
@@ -63,6 +71,34 @@ def get_module_trace(request: Request, onboarding_id: UUID, module_path: str) ->
         return trace_module(_store(request).get(onboarding_id), module_path)
     except OnboardingNotFoundError as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="onboarding record or module not found") from error
+
+
+@router.post("/{onboarding_id}/chat", response_model=ChatResponse, status_code=status.HTTP_202_ACCEPTED)
+async def chat_about_onboarded_repository(
+    request: Request,
+    onboarding_id: UUID,
+    chat_request: ChatRequest,
+) -> ChatResponse:
+    try:
+        record = _store(request).get(onboarding_id)
+    except OnboardingNotFoundError as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="onboarding record not found") from error
+    job_id = uuid4()
+    persistence = _persistence(request)
+    persistence.record_job(job_id=job_id, prompt=chat_request.prompt)
+    persistence.record_audit_entry(job_id=job_id, tool="onboarding_chat", action="create_job", outcome="accepted")
+    await event_bus.publish(JobCreatedEvent(job_id=job_id, prompt=chat_request.prompt))
+    create_background_task(
+        request.app,
+        stream_chat_job(
+            job_id=job_id,
+            bus=event_bus,
+            llm=create_llm_from_environment(),
+            prompt=chat_request.prompt,
+            system_prompt=onboarding_system_prompt(record),
+        ),
+    )
+    return ChatResponse(job_id=job_id)
 
 
 @router.get("/{onboarding_id}/tools", response_model=list[RepositoryToolDefinition])
