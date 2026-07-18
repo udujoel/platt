@@ -3,6 +3,14 @@
 This is the concise, human-readable record of validated delivery decisions.
 Detailed implementation and release notes belong in the PR and changelog.
 
+## 2026-07-18 — Hosted frontend configuration guard
+
+- Added a frontend guard that retains local defaults for development but blocks
+  a hosted static build without both configured backend URLs before it opens a
+  socket or makes an API request.
+- The guard makes the unselected production backend boundary visible without
+  adding a service, credential, or ownership change.
+
 ## 2026-07-18 — Browser WebSocket origin enforcement
 
 - Applied the validated API-origin pattern to WebSocket handshakes before they

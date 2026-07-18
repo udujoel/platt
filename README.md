@@ -84,6 +84,11 @@ production API host. The same pattern is enforced before a browser WebSocket is
 subscribed or sent event data; clients without a matching `Origin` header are
 closed with the WebSocket policy-violation code.
 
+Local frontend development defaults to `127.0.0.1` endpoints. A hosted build
+without both endpoint variables deliberately shows a backend-configuration
+screen instead of attempting a visitor's localhost. This does not provision or
+select a hosted backend.
+
 ## Local onboarding API
 
 Configure `PLATT_ONBOARDING_ROOT` to the app-owned directory containing checked-out
