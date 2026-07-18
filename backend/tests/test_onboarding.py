@@ -162,6 +162,24 @@ def test_module_trace_rejects_an_unknown_module(tmp_path: Path) -> None:
     assert response.status_code == 404
 
 
+def test_module_trace_uses_a_root_connected_parent_when_the_first_parent_is_orphaned(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    for module_path in ("a", "b", "shared"):
+        (repository / module_path).mkdir(parents=True)
+    (repository / "main.tf").write_text('module "b" { source = "./b" }\n')
+    (repository / "a" / "main.tf").write_text('module "shared" { source = "../shared" }\n')
+    (repository / "b" / "main.tf").write_text('module "shared" { source = "../shared" }\n')
+    (repository / "shared" / "main.tf").write_text('variable "name" { type = string }\n')
+    client = _client(tmp_path)
+
+    created = client.post("/onboarding", json={"repository_path": str(repository)})
+    trace = client.get(f"/onboarding/{created.json()['id']}/module-trace", params={"module_path": "shared"})
+
+    assert trace.status_code == 200
+    assert trace.json()["path_to_root"] == [".", "b", "shared"]
+    assert [edge["caller_path"] for edge in trace.json()["edges"]] == [".", "b"]
+
+
 def test_onboarding_rejects_non_absolute_or_missing_paths(tmp_path: Path) -> None:
     client = _client(tmp_path)
 

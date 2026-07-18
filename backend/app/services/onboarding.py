@@ -10,6 +10,7 @@ import json
 import os
 import re
 import sqlite3
+from collections import deque
 from collections.abc import Iterator
 from datetime import datetime, timezone
 from io import StringIO
@@ -323,25 +324,32 @@ def trace_module(record: OnboardingRecord, module_path: str) -> TerraformModuleT
     known_paths = {node.path for node in record.terraform_module_nodes}
     if normalized not in known_paths:
         raise OnboardingNotFoundError(normalized)
-    path_to_root = [normalized]
-    trace_edges: list[TerraformModuleEdge] = []
-    current = normalized
-    while current != ".":
-        candidates = sorted(
-            (edge for edge in record.terraform_module_edges if edge.target_path == current),
-            key=lambda edge: (edge.caller_path, edge.module_name),
-        )
-        if not candidates:
-            break
-        edge = candidates[0]
-        if edge.caller_path in path_to_root:
-            break
-        trace_edges.append(edge)
-        path_to_root.append(edge.caller_path)
-        current = edge.caller_path
-    path_to_root.reverse()
-    trace_edges.reverse()
-    return TerraformModuleTrace(module_path=normalized, path_to_root=path_to_root, edges=trace_edges)
+    incoming_edges: dict[str, list[TerraformModuleEdge]] = {}
+    for edge in record.terraform_module_edges:
+        incoming_edges.setdefault(edge.target_path, []).append(edge)
+    for edges in incoming_edges.values():
+        edges.sort(key=lambda edge: (edge.caller_path, edge.module_name))
+    pending = deque([(normalized, [normalized], [], frozenset({normalized}))])
+    while pending:
+        current, reverse_path, reverse_edges, visited = pending.popleft()
+        if current == ".":
+            return TerraformModuleTrace(
+                module_path=normalized,
+                path_to_root=list(reversed(reverse_path)),
+                edges=list(reversed(reverse_edges)),
+            )
+        for edge in incoming_edges.get(current, []):
+            if edge.caller_path in visited:
+                continue
+            pending.append(
+                (
+                    edge.caller_path,
+                    reverse_path + [edge.caller_path],
+                    reverse_edges + [edge],
+                    visited | {edge.caller_path},
+                )
+            )
+    return TerraformModuleTrace(module_path=normalized, path_to_root=[normalized], edges=[])
 
 
 def _yaml_path_filters(contents: str) -> list[tuple[str, list[str], list[str]]]:
