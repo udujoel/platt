@@ -12,7 +12,13 @@ async def websocket_event_bus(websocket: WebSocket) -> None:
     await websocket.accept()
     try:
         async for event in event_bus.subscribe():
-            await websocket.send_json(event.model_dump(mode="json"))
+            try:
+                await websocket.send_json(event.model_dump(mode="json"))
+            except (WebSocketDisconnect, RuntimeError):
+                # A client transport can close after the event is dequeued but
+                # before the ASGI server performs the send. Treat that race as
+                # a normal disconnect so the subscription is cleaned up.
+                return
     except asyncio.CancelledError:
         raise
     except WebSocketDisconnect:

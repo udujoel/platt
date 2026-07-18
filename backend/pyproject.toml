@@ -1,6 +1,6 @@
 [project]
 name = "platt-backend"
-version = "0.1.0"
+version = "0.1.1"
 description = "Phase 1 FastAPI backend skeleton for Platt."
 requires-python = ">=3.12"
 dependencies = [
