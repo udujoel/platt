@@ -3,6 +3,13 @@
 This is the concise, human-readable record of validated delivery decisions.
 Detailed implementation and release notes belong in the PR and changelog.
 
+## 2026-07-18 — Persistence-aware readiness probe
+
+- Added a provider-neutral `/ready` endpoint that checks the active SQLite
+  connection with a read-only query and returns a generic `503` if it fails.
+- This adds a meaningful host integration point without selecting a host or
+  exposing database paths or low-level storage errors.
+
 ## 2026-07-18 — Hosted frontend configuration guard
 
 - Added a frontend guard that retains local defaults for development but blocks

@@ -58,8 +58,9 @@ completed 3D implementation.
   Platt experience. Vercel currently hosts only the static frontend.
 - Explicit API and browser-WebSocket origin policy now shares a validated
   `PLATT_ALLOWED_ORIGIN_REGEX` override while retaining a local-Vite-only
-  default. Health checks, deployments, and rollback evidence remain to be
-  delivered with a selected backend host.
+  default. A provider-neutral `/ready` probe now confirms SQLite readability;
+  deployments and rollback evidence remain to be delivered with a selected
+  backend host.
 - Hosted frontend builds without explicitly configured API and WebSocket URLs
   now render a configuration-required screen instead of silently attempting a
   visitor's local backend.

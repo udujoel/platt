@@ -36,7 +36,10 @@ npm run dev
 Implemented:
 
 - Typed Phase 1 backend event contract for PRD section 7.3.
-- `/health`, `/ws`, and `/chat`; chat uses a swappable Anthropic streaming client and publishes typed state and delta events.
+- `/health`, `/ready`, `/ws`, and `/chat`; `/ready` verifies that the current
+  process can read its SQLite persistence before a host routes traffic to it.
+  Chat uses a swappable Anthropic streaming client and publishes typed state
+  and delta events.
 - Local-only repository onboarding via `POST /onboarding`: inventories bounded files,
   Terraform module sources, a local Terraform module graph (variables, outputs, and
   safe relative-source edges), and Azure Pipeline YAML path filters, then persists the

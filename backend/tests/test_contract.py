@@ -32,6 +32,27 @@ def test_health_returns_ok(client: TestClient) -> None:
     assert response.json() == {"status": "ok"}
 
 
+def test_readiness_confirms_persistence_is_available(client: TestClient) -> None:
+    response = client.get("/ready")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ready", "persistence": "ok"}
+
+
+def test_readiness_returns_service_unavailable_when_persistence_fails(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fail_readiness() -> None:
+        raise sqlite3.ProgrammingError("closed database")
+
+    monkeypatch.setattr(client.app.state.persistence, "check_ready", fail_readiness)
+
+    response = client.get("/ready")
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Persistence is unavailable"}
+
+
 def test_audit_preflight_allows_local_vite_preview(client: TestClient) -> None:
     response = client.options(
         "/audit",
