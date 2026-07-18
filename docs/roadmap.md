@@ -9,10 +9,10 @@ real system needs their decision.
 
 ## Current product boundary
 
-Version `0.1.0` is a locally validated Phase 1 slice. It has a typed streaming
-event contract, persisted audit/job records, a bounded local repository
-onboarding flow, and a React/Vite interface with an animated 2D office stage.
-The 2D stage remains the supported v0.x embodiment.
+Version `0.2.0` is a locally validated Phase 1 slice. It has a typed streaming
+event contract, persisted audit/job records, bounded local repository
+onboarding and review-plan controls, and a React/Vite interface with an
+animated 2D office stage. The 2D stage remains the supported v0.x embodiment.
 
 **A 3D React Three Fiber (R3F) character is mandatory for the next major
 release.** It is not optional polish and must keep the existing event-state
@@ -22,7 +22,7 @@ completed 3D implementation.
 
 ## Delivery sequence
 
-### 0.1.1 — Reliability and release discipline (current checkpoint)
+### 0.1.1 — Reliability and release discipline (completed)
 
 - Handle a WebSocket send that races a closed transport without emitting an
   unhandled ASGI error; retain regression coverage.
@@ -32,7 +32,7 @@ completed 3D implementation.
   development log.
 - Verify the checkpoint locally, on its PR, and through a Vercel preview.
 
-### 0.2 — Bounded repository intelligence and safe tool control
+### 0.2 — Bounded repository intelligence and safe tool control (release candidate)
 
 - Build on the existing local-only onboarding inventory; do not reimplement it.
 - Started with a frontend local-repository onboarding panel: it shows bounded
@@ -100,9 +100,6 @@ completed 3D implementation.
   slice, not multi-instance/reconnect-resilient production delivery.
 - Azure seed infrastructure still contains placeholder identifiers and has not
   been applied against an Azure subscription or Azure DevOps organization.
-- Configuration naming has drifted: documentation mentions
-  `PLATT_DATABASE_URL`, while the current persistence code reads
-  `PLATT_DB_PATH`.
 - Automated PR reviewers can be quota- or rate-limited. Reviews must be
   checked after the required waiting period, but no paid bypass is permitted.
 
