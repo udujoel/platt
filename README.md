@@ -47,6 +47,8 @@ Implemented:
 - A repeatable ten-question acceptance suite over `seed-infra`, covering module
   traces, pipeline discovery, provider posture, resource definitions, and
   governance conventions through the onboarding APIs.
+- A local repository onboarding panel that displays bounded inventory and graph
+  facts, then scopes subsequent chat requests to that onboarding record.
 - React/Vite shell with the audit inspector, chat panel, animated office, speech bubble, and state-specific Platt rig.
 - Orca work packages for planning, backend, frontend, and operations.
 

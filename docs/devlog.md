@@ -3,6 +3,17 @@
 This is the concise, human-readable record of validated delivery decisions.
 Detailed implementation and release notes belong in the PR and changelog.
 
+## 2026-07-18 — Repository context reaches the frontend
+
+- Added a local-only onboarding panel to the React interface. An operator can
+  submit a checkout path permitted by the backend, review bounded inventory and
+  module-graph facts, and continue through repository-scoped chat.
+- Validated the full local user flow against the checked-out repository: 89
+  files, four Terraform graph nodes, two pipeline files, and an audited scoped
+  chat job were observed in the UI.
+- Retained the local-only boundary: the browser does not clone repositories,
+  acquire credentials, or contact Azure, Azure DevOps, or Git remotes.
+
 ## 2026-07-18 — Technical design direction established
 
 - Validated `main` at `b41ca50` with 34 backend tests passing, a successful
@@ -34,6 +45,6 @@ Detailed implementation and release notes belong in the PR and changelog.
 
 ## Next log entry
 
-On merge of `0.1.1`, record the merge commit, Vercel preview URL and result,
-CI/check status, automated-review disposition, and the exact regression checks
-run. Do not mark the checkpoint shipped without all of those facts.
+Record the frontend-onboarding PR merge commit, Vercel preview result,
+CI/check status, automated-review disposition, and any review fixes. Do not
+mark the slice shipped without all of those facts.

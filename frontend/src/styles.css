@@ -37,7 +37,7 @@ input {
 
 .auditPanel {
   display: grid;
-  grid-template-rows: minmax(270px, 42vh) minmax(0, 1fr);
+  grid-template-rows: auto minmax(220px, 32vh) minmax(0, 1fr);
   min-height: 100vh;
   overflow: hidden;
   border-right: 1px solid rgba(244, 247, 251, 0.12);
@@ -84,6 +84,157 @@ input {
 .auditSection h1,
 .auditSection h2 {
   font-size: 1.08rem;
+}
+
+.repositoryContext {
+  display: grid;
+  gap: 0.7rem;
+  border-bottom: 1px solid rgba(244, 247, 251, 0.1);
+}
+
+.repositoryStatus {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 0.5rem;
+  border: 1px solid rgba(244, 247, 251, 0.14);
+  border-radius: 999px;
+  color: rgba(244, 247, 251, 0.58);
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.repositoryStatus.ready {
+  border-color: rgba(45, 212, 191, 0.42);
+  color: #99f6e4;
+}
+
+.repositoryIntro,
+.repositorySummary > span,
+.repositorySummary p {
+  color: rgba(244, 247, 251, 0.58);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.onboardingForm {
+  display: grid;
+  gap: 0.38rem;
+}
+
+.onboardingForm label {
+  color: rgba(244, 247, 251, 0.58);
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.onboardingForm div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.45rem;
+}
+
+.onboardingForm input {
+  min-width: 0;
+  height: 34px;
+  border: 1px solid rgba(244, 247, 251, 0.16);
+  border-radius: 7px;
+  outline: 0;
+  padding: 0 0.65rem;
+  background: rgba(255, 255, 255, 0.06);
+  color: #f4f7fb;
+  font-size: 0.74rem;
+}
+
+.onboardingForm input:focus {
+  border-color: rgba(45, 212, 191, 0.72);
+}
+
+.onboardingForm button {
+  min-height: 34px;
+  border: 0;
+  border-radius: 7px;
+  padding: 0 0.65rem;
+  background: #2dd4bf;
+  color: #10131a;
+  cursor: pointer;
+  font-size: 0.71rem;
+  font-weight: 800;
+}
+
+.onboardingForm button:hover {
+  background: #5eead4;
+}
+
+.onboardingForm button:disabled,
+.onboardingForm input:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
+.repositoryError {
+  padding: 0.48rem 0.58rem;
+  border: 1px solid rgba(248, 113, 113, 0.42);
+  border-radius: 7px;
+  background: rgba(127, 29, 29, 0.18);
+  color: #fecaca;
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
+
+.repositorySummary {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.65rem;
+  border: 1px solid rgba(45, 212, 191, 0.24);
+  border-radius: 8px;
+  background: rgba(45, 212, 191, 0.07);
+}
+
+.repositorySummary > strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #f4f7fb;
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repositorySummary > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.repositorySummary dl {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.42rem;
+  margin: 0.2rem 0;
+}
+
+.repositorySummary dl div {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.repositorySummary dt {
+  color: rgba(244, 247, 251, 0.52);
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.repositorySummary dd {
+  margin: 0;
+  color: #99f6e4;
+  font-size: 0.82rem;
+  font-weight: 800;
 }
 
 .iconButton,
@@ -691,8 +842,8 @@ input {
   }
 
   .auditPanel {
-    min-height: 520px;
-    grid-template-rows: minmax(250px, 42vh) minmax(270px, auto);
+    min-height: 680px;
+    grid-template-rows: auto minmax(220px, 36vh) minmax(270px, auto);
     border-right: 0;
     border-bottom: 1px solid rgba(244, 247, 251, 0.12);
   }

@@ -35,6 +35,9 @@ completed 3D implementation.
 ### 0.2 — Bounded repository intelligence and safe tool control
 
 - Build on the existing local-only onboarding inventory; do not reimplement it.
+- Started with a frontend local-repository onboarding panel: it shows bounded
+  inventory/graph facts and sends subsequent questions through the scoped
+  onboarding-chat endpoint.
 - Turn discovered repository facts into inspectable, bounded job plans with
   explicit tool inputs, outputs, and audit records.
 - Add tests for path boundaries, refusal behavior, retries, reconnects, and
