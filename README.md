@@ -83,6 +83,11 @@ The tools are `read_file` (`path`), `glob` (`pattern`), and literal `grep`
 the trusted checkout before every call, reject symlinks, record an audit entry,
 and report when their 500-path or one-megabyte search budgets truncate results.
 
+Use `POST /onboarding/{id}/chat` with the normal `{"prompt":"..."}` body to
+start a chat job with a metadata-only summary of that onboarding record. The
+summary treats repository content as untrusted data, lists detected modules and
+pipeline files, and never represents a repository tool as having run.
+
 Records are stored in the owner-only `.platt/` app-state directory by default; set
 `PLATT_ONBOARDING_DB` to use another local SQLite path. Scanning is capped at 5,000
 files and 2,000 directories, does not follow symlinks, and skips common
