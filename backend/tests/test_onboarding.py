@@ -369,6 +369,28 @@ def test_repository_review_plan_executes_one_listed_step_and_audits_its_job(tmp_
     }
 
 
+def test_repository_review_plan_step_rejects_a_job_from_another_onboarding_record(tmp_path: Path) -> None:
+    first_repository = tmp_path / "first-repository"
+    second_repository = tmp_path / "second-repository"
+    first_repository.mkdir()
+    second_repository.mkdir()
+    (first_repository / "versions.tf").write_text('terraform { required_version = ">= 1.7" }\n')
+    (second_repository / "versions.tf").write_text('terraform { required_version = ">= 1.7" }\n')
+
+    with _client(tmp_path) as client:
+        first = client.post("/onboarding", json={"repository_path": str(first_repository)})
+        second = client.post("/onboarding", json={"repository_path": str(second_repository)})
+        plan = client.post(f"/onboarding/{first.json()['id']}/plans/repository-review")
+        rejected = client.post(
+            f"/onboarding/{second.json()['id']}/plans/repository-review/{plan.json()['job_id']}/steps/provider-constraints"
+        )
+        events = client.get(f"/jobs/{plan.json()['job_id']}/events")
+
+    assert rejected.status_code == 404
+    assert rejected.json() == {"detail": "repository review plan job not found"}
+    assert [event["type"] for event in events.json()["events"]] == ["job_created", "plan_ready"]
+
+
 @pytest.mark.parametrize(
     ("response", "expected"),
     [

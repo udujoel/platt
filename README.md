@@ -60,7 +60,9 @@ Implemented:
   explicitly run one proposed read-only step and inspect its bounded result.
   Each completed plan step also saves a content-free receipt in the original
   job history (for example, returned byte, path, or match counts and whether a
-  result was truncated), without persisting repository contents.
+  result was truncated), without persisting repository contents. Each plan job
+  is bound to the onboarding record that created it, so it cannot authorize a
+  step against a different checked-out repository.
 - A reconnecting local event client with capped retry backoff. After a socket
   reconnect, it recovers a bounded, persisted event window in stable order and
   de-duplicates it against live delivery.

@@ -28,6 +28,7 @@ class Persistence:
                     id text primary key,
                     prompt text not null,
                     status text not null,
+                    onboarding_id text,
                     created_at text not null default current_timestamp,
                     updated_at text not null default current_timestamp
                 );
@@ -53,6 +54,9 @@ class Persistence:
                 create index if not exists idx_audit_entries_job_id on audit_entries (job_id);
                 """
             )
+            job_columns = {row["name"] for row in self._connection.execute("pragma table_info(jobs)")}
+            if "onboarding_id" not in job_columns:
+                self._connection.execute("alter table jobs add column onboarding_id text")
 
     def close(self) -> None:
         with self._lock:
@@ -64,18 +68,25 @@ class Persistence:
         with self._lock:
             self._connection.execute("select 1").fetchone()
 
-    def record_job(self, job_id: UUID, prompt: str, status: str = "accepted") -> None:
+    def record_job(
+        self,
+        job_id: UUID,
+        prompt: str,
+        status: str = "accepted",
+        onboarding_id: UUID | None = None,
+    ) -> None:
         with self._lock, self._connection:
             self._connection.execute(
                 """
-                insert into jobs (id, prompt, status)
-                values (?, ?, ?)
+                insert into jobs (id, prompt, status, onboarding_id)
+                values (?, ?, ?, ?)
                 on conflict(id) do update set
                     prompt = excluded.prompt,
                     status = excluded.status,
+                    onboarding_id = coalesce(excluded.onboarding_id, jobs.onboarding_id),
                     updated_at = current_timestamp
                 """,
-                (str(job_id), prompt, status),
+                (str(job_id), prompt, status, str(onboarding_id) if onboarding_id else None),
             )
 
     def update_job_status(self, job_id: UUID, status: str) -> None:
@@ -116,7 +127,7 @@ class Persistence:
     def get_job(self, job_id: UUID) -> dict[str, Any] | None:
         with self._lock:
             row = self._connection.execute(
-                "select id, prompt, status, created_at, updated_at from jobs where id = ?",
+                "select id, prompt, status, onboarding_id, created_at, updated_at from jobs where id = ?",
                 (str(job_id),),
             ).fetchone()
         return dict(row) if row else None

@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from threading import Event as ThreadEvent
 from threading import Thread
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -15,6 +15,7 @@ from starlette.websockets import WebSocketDisconnect
 from app.event_bus import EventBus, event_bus
 from app.main import LOCAL_VITE_ORIGIN_REGEX, create_app
 from app.models import AgentStateEvent, EventType, PlattState
+from app.persistence import Persistence
 from app.routers import dev
 from app.routers.ws import websocket_event_bus
 
@@ -51,6 +52,39 @@ def test_readiness_returns_service_unavailable_when_persistence_fails(
 
     assert response.status_code == 503
     assert response.json() == {"detail": "Persistence is unavailable"}
+
+
+def test_persistence_migrates_legacy_jobs_for_onboarding_binding(tmp_path) -> None:
+    db_path = tmp_path / "legacy-jobs.sqlite3"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            create table jobs (
+                id text primary key,
+                prompt text not null,
+                status text not null,
+                created_at text not null default current_timestamp,
+                updated_at text not null default current_timestamp
+            )
+            """
+        )
+        legacy_job_id = str(uuid4())
+        connection.execute(
+            "insert into jobs (id, prompt, status) values (?, ?, ?)",
+            (legacy_job_id, "Legacy plan", "accepted"),
+        )
+
+    persistence = Persistence(db_path)
+    job_id = uuid4()
+    onboarding_id = uuid4()
+    try:
+        legacy_job = persistence.get_job(UUID(legacy_job_id))
+        assert legacy_job is not None
+        assert legacy_job["onboarding_id"] is None
+        persistence.record_job(job_id, prompt="Bound plan", onboarding_id=onboarding_id)
+        assert persistence.get_job(job_id)["onboarding_id"] == str(onboarding_id)
+    finally:
+        persistence.close()
 
 
 def test_audit_preflight_allows_local_vite_preview(client: TestClient) -> None:
