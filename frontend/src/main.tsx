@@ -121,6 +121,11 @@ type RepositoryInspectionPlanResponse = {
   plan: RepositoryInspectionPlan;
 };
 
+type RepositoryToolResponse = {
+  tool: "read_file" | "glob" | "grep";
+  result: unknown;
+};
+
 type PersistedJobEvent = {
   id: string;
   job_id: string;
@@ -554,6 +559,11 @@ function repositoryName(path: string) {
   return segments[segments.length - 1] ?? path;
 }
 
+function formatRepositoryToolResult(result: unknown) {
+  const output = JSON.stringify(result, null, 2);
+  return output.length > 1_600 ? `${output.slice(0, 1_600)}\n… truncated in preview` : output;
+}
+
 function RepositoryContext({
   record,
   onRecordChange,
@@ -567,8 +577,12 @@ function RepositoryContext({
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [plan, setPlan] = React.useState<RepositoryInspectionPlan | null>(null);
+  const [planJobId, setPlanJobId] = React.useState<string | null>(null);
   const [planBusy, setPlanBusy] = React.useState(false);
   const [planError, setPlanError] = React.useState<string | null>(null);
+  const [runningStepId, setRunningStepId] = React.useState<string | null>(null);
+  const [stepResults, setStepResults] = React.useState<Record<string, RepositoryToolResponse>>({});
+  const [stepError, setStepError] = React.useState<string | null>(null);
   const modulePreview = record?.terraform_module_nodes.slice(0, 3).map((module) => module.path === "." ? "root" : module.path).join(", ");
 
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -581,7 +595,10 @@ function RepositoryContext({
     try {
       const response = await postJson<OnboardingRecord>("/onboarding", { repository_path: path });
       setPlan(null);
+      setPlanJobId(null);
       setPlanError(null);
+      setStepResults({});
+      setStepError(null);
       onRecordChange(response);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not onboard this repository.");
@@ -600,11 +617,31 @@ function RepositoryContext({
         `/onboarding/${encodeURIComponent(record.id)}/plans/repository-review`,
       );
       setPlan(response.plan);
+      setPlanJobId(response.job_id);
+      setStepResults({});
+      setStepError(null);
       onPlanJobAccepted(response.job_id);
     } catch (reason) {
       setPlanError(reason instanceof Error ? reason.message : "Could not prepare this review plan.");
     } finally {
       setPlanBusy(false);
+    }
+  };
+
+  const onRunPlanStep = async (step: RepositoryInspectionStep) => {
+    if (!record || !planJobId || runningStepId) return;
+
+    setRunningStepId(step.id);
+    setStepError(null);
+    try {
+      const response = await postJson<RepositoryToolResponse>(
+        `/onboarding/${encodeURIComponent(record.id)}/plans/repository-review/${encodeURIComponent(planJobId)}/steps/${encodeURIComponent(step.id)}`,
+      );
+      setStepResults((current) => ({ ...current, [step.id]: response }));
+    } catch (reason) {
+      setStepError(reason instanceof Error ? reason.message : "Could not run this read-only step.");
+    } finally {
+      setRunningStepId(null);
     }
   };
 
@@ -662,10 +699,15 @@ function RepositoryContext({
                     <strong>{step.title}</strong>
                     <span><b>{step.tool}</b> · {Object.entries(step.arguments).map(([name, value]) => `${name}: ${value}`).join(", ")}</span>
                     <small>{step.expected_output}</small>
+                    <button className="planStepButton" type="button" onClick={() => void onRunPlanStep(step)} disabled={Boolean(runningStepId)}>
+                      {runningStepId === step.id ? "Running read-only step" : `Run ${step.tool}`}
+                    </button>
+                    {stepResults[step.id] ? <pre>{formatRepositoryToolResult(stepResults[step.id].result)}</pre> : null}
                   </li>
                 ))}
               </ol>
-              <footer>Preview only — these steps are not run automatically.</footer>
+              {stepError ? <div className="repositoryError" role="alert">{stepError}</div> : null}
+              <footer>No step runs automatically. Each explicit run is read-only and recorded against this plan job.</footer>
             </section>
           ) : null}
         </div>

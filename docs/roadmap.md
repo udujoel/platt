@@ -41,6 +41,9 @@ completed 3D implementation.
 - Started turning discovered repository facts into inspectable, bounded job
   plans with explicit tool inputs, outputs, and audit records. Plan creation
   cannot execute repository tools.
+- An operator can explicitly run one pre-planned read-only step; the result and
+  audit event are attached to that original plan job. Arbitrary tool input and
+  automatic execution remain unavailable.
 - Added a bounded persisted-event recovery window with deterministic ordering;
   the local client uses capped retry backoff and rehydrates that window after a
   WebSocket reconnect without duplicating live events.

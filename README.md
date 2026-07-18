@@ -50,7 +50,8 @@ Implemented:
 - A local repository onboarding panel that displays bounded inventory and graph
   facts, prepares an explicit read-only review-plan preview, then scopes
   subsequent chat requests to that onboarding record. Preparing the preview
-  records an audit event but does not run its listed tools.
+  records an audit event but does not run its listed tools; an operator may
+  explicitly run one proposed read-only step and inspect its bounded result.
 - A reconnecting local event client with capped retry backoff. After a socket
   reconnect, it recovers a bounded, persisted event window in stable order and
   de-duplicates it against live delivery.

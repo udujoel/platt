@@ -312,6 +312,38 @@ def test_repository_review_plan_skips_optional_file_reads_outside_the_inventory(
     ]
 
 
+def test_repository_review_plan_executes_one_listed_step_and_audits_its_job(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    (repository / "versions.tf").write_text('terraform { required_version = ">= 1.7" }\n')
+
+    with _client(tmp_path) as client:
+        created = client.post("/onboarding", json={"repository_path": str(repository)})
+        plan_response = client.post(f"/onboarding/{created.json()['id']}/plans/repository-review")
+        job_id = plan_response.json()["job_id"]
+        executed = client.post(
+            f"/onboarding/{created.json()['id']}/plans/repository-review/{job_id}/steps/provider-constraints"
+        )
+        rejected = client.post(
+            f"/onboarding/{created.json()['id']}/plans/repository-review/{job_id}/steps/not-a-plan-step"
+        )
+        audit = client.get(f"/audit?job_id={job_id}")
+        events = client.get(f"/jobs/{job_id}/events")
+
+    assert plan_response.status_code == 202
+    assert executed.status_code == 200
+    assert executed.json() == {
+        "tool": "read_file",
+        "result": {"path": "versions.tf", "content": 'terraform { required_version = ">= 1.7" }\n'},
+    }
+    assert rejected.status_code == 404
+    assert {(entry["tool"], entry["action"], entry["outcome"]) for entry in audit.json()["entries"]} == {
+        ("onboarding_plan", "create_plan", "accepted"),
+        ("repo.read_file", "execute_plan_step", "succeeded"),
+    }
+    assert [event["type"] for event in events.json()["events"]] == ["job_created", "plan_ready", "audit_entry"]
+
+
 def test_repository_review_plan_only_uses_persisted_inventory_paths(tmp_path: Path) -> None:
     repository = tmp_path / "repository"
     repository.mkdir()
