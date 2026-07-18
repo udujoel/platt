@@ -6,7 +6,7 @@ import "./styles.css";
 import { resolveBackendConfiguration } from "./backend-config";
 import type { BackendConfiguration } from "./backend-config";
 import { ReconnectPolicy } from "./reconnect-policy";
-import { parseBackendReadiness } from "./readiness-status";
+import { createBackendReadinessPoller } from "./readiness-status";
 import type { BackendReadiness } from "./readiness-status";
 
 type PlattState =
@@ -471,28 +471,13 @@ function useBackendReadiness(): BackendReadiness {
   const [readiness, setReadiness] = React.useState<BackendReadiness>("checking");
 
   React.useEffect(() => {
-    let closed = false;
-    let retryTimer: number | undefined;
+    const poller = createBackendReadinessPoller({
+      requestReadiness: (signal) => requestJson<unknown>("/ready", { signal }),
+      onReadiness: setReadiness,
+    });
 
-    const checkReadiness = async () => {
-      const controller = new AbortController();
-      const timeout = window.setTimeout(() => controller.abort(), 5_000);
-      try {
-        const response = await requestJson<unknown>("/ready", { signal: controller.signal });
-        if (!closed) setReadiness(parseBackendReadiness(response));
-      } catch {
-        if (!closed) setReadiness("unavailable");
-      } finally {
-        window.clearTimeout(timeout);
-        if (!closed) retryTimer = window.setTimeout(() => void checkReadiness(), 30_000);
-      }
-    };
-
-    void checkReadiness();
-    return () => {
-      closed = true;
-      window.clearTimeout(retryTimer);
-    };
+    poller.start();
+    return () => poller.stop();
   }, []);
 
   return readiness;
