@@ -38,7 +38,8 @@ Implemented:
 - Typed Phase 1 backend event contract for PRD section 7.3.
 - `/health`, `/ws`, and `/chat`; chat uses a swappable Anthropic streaming client and publishes typed state and delta events.
 - Local-only repository onboarding via `POST /onboarding`: inventories bounded files,
-  Terraform module sources, and Azure Pipeline YAML path filters, then persists the
+  Terraform module sources, a local Terraform module graph (variables, outputs, and
+  safe relative-source edges), and Azure Pipeline YAML path filters, then persists the
   result in SQLite. It never clones repositories or contacts Azure, Terraform, or git remotes.
 - React/Vite shell with the audit inspector, chat panel, animated office, speech bubble, and state-specific Platt rig.
 - Orca work packages for planning, backend, frontend, and operations.
@@ -60,10 +61,15 @@ curl -X POST http://127.0.0.1:8000/onboarding \
   -d '{"repository_path":"/absolute/path/to/repository"}'
 ```
 
-Retrieve the persisted response with `GET /onboarding/{id}`. Records are stored in the
-owner-only `.platt/` app-state directory by default; set `PLATT_ONBOARDING_DB` to use
-another local SQLite path. Scanning is capped at 5,000 files and 2,000 directories,
-does not follow symlinks, and skips common generated/metadata directories.
+Retrieve the persisted response with `GET /onboarding/{id}`. Use
+`GET /onboarding/{id}/module-trace?module_path=modules/example` to obtain a
+deterministic local-module path back to the repository root. Only relative sources
+that resolve to a directory inside the checked-out repository become graph edges.
+
+Records are stored in the owner-only `.platt/` app-state directory by default; set
+`PLATT_ONBOARDING_DB` to use another local SQLite path. Scanning is capped at 5,000
+files and 2,000 directories, does not follow symlinks, and skips common
+generated/metadata directories.
 
 ## Publishing Blockers
 

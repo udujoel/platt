@@ -12,14 +12,20 @@ import re
 import sqlite3
 from collections.abc import Iterator
 from datetime import datetime, timezone
+from io import StringIO
 from pathlib import Path
 from uuid import UUID, uuid4
+
+import hcl2
 
 from app.models import (
     FileInventoryEntry,
     OnboardingRecord,
     PipelineYamlInventory,
+    TerraformModuleEdge,
+    TerraformModuleNode,
     TerraformModuleReference,
+    TerraformModuleTrace,
 )
 
 MAX_FILES = 5_000
@@ -236,6 +242,108 @@ def _terraform_modules(root: Path, files: list[Path]) -> list[TerraformModuleRef
     return modules
 
 
+def _module_path(root: Path, directory: Path) -> str:
+    relative = _relative_path(root, directory)
+    return relative or "."
+
+
+def _hcl_name(value: str) -> str:
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return value
+    return parsed if isinstance(parsed, str) else value
+
+
+def _hcl_string(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    parsed = _hcl_name(value)
+    return parsed if parsed != value or value.startswith('"') else None
+
+
+def _hcl_block_names(document: dict[str, object], block_type: str) -> set[str]:
+    names: set[str] = set()
+    for block in document.get(block_type, []):
+        if not isinstance(block, dict):
+            continue
+        for raw_name in block:
+            names.add(_hcl_name(raw_name))
+    return names
+
+
+def _terraform_module_graph(
+    root: Path, files: list[Path]
+) -> tuple[list[TerraformModuleNode], list[TerraformModuleEdge]]:
+    node_data: dict[str, dict[str, set[str]]] = {}
+    edges: list[TerraformModuleEdge] = []
+    for path in files:
+        if path.suffix != ".tf":
+            continue
+        contents = _read_bounded_text(root, path, "Terraform file")
+        if contents is None:
+            continue
+        try:
+            document = hcl2.load(StringIO(contents))
+        except Exception as error:
+            raise OnboardingError(f"Terraform file could not be parsed: {_relative_path(root, path)}") from error
+        caller_path = _module_path(root, path.parent)
+        facts = node_data.setdefault(caller_path, {"variables": set(), "outputs": set()})
+        facts["variables"].update(_hcl_block_names(document, "variable"))
+        facts["outputs"].update(_hcl_block_names(document, "output"))
+        for block in document.get("module", []):
+            if not isinstance(block, dict):
+                continue
+            for raw_name, configuration in block.items():
+                if not isinstance(configuration, dict):
+                    continue
+                source = _hcl_string(configuration.get("source"))
+                if not source or not source.startswith("."):
+                    continue
+                target = (path.parent / source).resolve(strict=False)
+                if not _is_within(root, target) or not target.is_dir():
+                    continue
+                edges.append(
+                    TerraformModuleEdge(
+                        caller_path=caller_path,
+                        module_name=_hcl_name(raw_name),
+                        source=source,
+                        target_path=_module_path(root, target),
+                    )
+                )
+    nodes = [
+        TerraformModuleNode(path=path, variables=sorted(facts["variables"]), outputs=sorted(facts["outputs"]))
+        for path, facts in sorted(node_data.items())
+    ]
+    return nodes, sorted(edges, key=lambda edge: (edge.caller_path, edge.module_name, edge.target_path))
+
+
+def trace_module(record: OnboardingRecord, module_path: str) -> TerraformModuleTrace:
+    normalized = module_path.strip().strip("/") or "."
+    known_paths = {node.path for node in record.terraform_module_nodes}
+    if normalized not in known_paths:
+        raise OnboardingNotFoundError(normalized)
+    path_to_root = [normalized]
+    trace_edges: list[TerraformModuleEdge] = []
+    current = normalized
+    while current != ".":
+        candidates = sorted(
+            (edge for edge in record.terraform_module_edges if edge.target_path == current),
+            key=lambda edge: (edge.caller_path, edge.module_name),
+        )
+        if not candidates:
+            break
+        edge = candidates[0]
+        if edge.caller_path in path_to_root:
+            break
+        trace_edges.append(edge)
+        path_to_root.append(edge.caller_path)
+        current = edge.caller_path
+    path_to_root.reverse()
+    trace_edges.reverse()
+    return TerraformModuleTrace(module_path=normalized, path_to_root=path_to_root, edges=trace_edges)
+
+
 def _yaml_path_filters(contents: str) -> list[tuple[str, list[str], list[str]]]:
     """Extract distinct trigger, PR, and schedule `paths` lists without a YAML parser."""
     filters: list[tuple[str, list[str], list[str]]] = []
@@ -317,12 +425,15 @@ def _pipeline_yamls(root: Path, files: list[Path]) -> list[PipelineYamlInventory
 def inspect_repository(repository_path: str) -> OnboardingRecord:
     root = validate_repository_path(repository_path)
     files = list(_walk_files(root))
+    module_nodes, module_edges = _terraform_module_graph(root, files)
     return OnboardingRecord(
         id=uuid4(),
         repository_path=str(root),
         created_at=_utc_now(),
         files=_inventory_files(root, files),
         terraform_modules=_terraform_modules(root, files),
+        terraform_module_nodes=module_nodes,
+        terraform_module_edges=module_edges,
         pipeline_yamls=_pipeline_yamls(root, files),
     )
 
