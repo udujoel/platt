@@ -14,7 +14,7 @@ from collections import deque
 from collections.abc import Iterator
 from datetime import datetime, timezone
 from io import StringIO
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from uuid import UUID, uuid4
 
 import hcl2
@@ -23,6 +23,13 @@ from app.models import (
     FileInventoryEntry,
     OnboardingRecord,
     PipelineYamlInventory,
+    RepositoryFileReadResult,
+    RepositoryGlobResult,
+    RepositoryGrepResult,
+    RepositorySearchMatch,
+    RepositoryToolDefinition,
+    RepositoryToolInvocation,
+    RepositoryToolResponse,
     TerraformModuleEdge,
     TerraformModuleNode,
     TerraformModuleReference,
@@ -32,6 +39,10 @@ from app.models import (
 MAX_FILES = 5_000
 MAX_DIRECTORIES = 2_000
 MAX_FILE_BYTES = 1_000_000
+MAX_GLOB_RESULTS = 500
+MAX_GREP_BYTES = 1_000_000
+MAX_GREP_MATCHES = 100
+MAX_GREP_LINE_CHARS = 500
 TRUSTED_ONBOARDING_ROOT_ENV = "PLATT_ONBOARDING_ROOT"
 IGNORED_DIRECTORY_NAMES = {".git", ".terraform", "node_modules", ".venv", "venv", "__pycache__"}
 TERRAFORM_MODULE_START_RE = re.compile(r'(?m)^\s*module\s+"(?P<name>[^"]+)"\s*\{')
@@ -42,6 +53,39 @@ YAML_PATHS_RE = re.compile(r"^\s*paths\s*:\s*(?:#.*)?$")
 YAML_LIST_ITEM_RE = re.compile(r"^\s*-\s*(?P<path>[^#\s][^#]*?)\s*(?:#.*)?$")
 YAML_AZURE_RESOURCES_RE = re.compile(
     r"(?m)^resources\s*:\s*(?:#.*)?$\n(?:[ \t]*(?:#.*)?\n)*[ \t]+(?:repositories|pipelines|containers|packages|webhooks|builds)\s*:"
+)
+
+REPOSITORY_TOOL_DEFINITIONS = (
+    RepositoryToolDefinition(
+        name="read_file",
+        description="Read one file from the persisted, bounded repository inventory.",
+        input_schema={
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["path"],
+            "properties": {"path": {"type": "string", "maxLength": 4096}},
+        },
+    ),
+    RepositoryToolDefinition(
+        name="glob",
+        description="List persisted inventory paths that match a relative POSIX glob.",
+        input_schema={
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["pattern"],
+            "properties": {"pattern": {"type": "string", "maxLength": 512}},
+        },
+    ),
+    RepositoryToolDefinition(
+        name="grep",
+        description="Find literal text in persisted inventory files within a one-megabyte read budget.",
+        input_schema={
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["query"],
+            "properties": {"query": {"type": "string", "minLength": 1, "maxLength": 256}},
+        },
+    ),
 )
 
 
@@ -350,6 +394,98 @@ def trace_module(record: OnboardingRecord, module_path: str) -> TerraformModuleT
                 )
             )
     return TerraformModuleTrace(module_path=normalized, path_to_root=[normalized], edges=[])
+
+
+def repository_tool_definitions() -> list[RepositoryToolDefinition]:
+    return [definition.model_copy(deep=True) for definition in REPOSITORY_TOOL_DEFINITIONS]
+
+
+def _tool_argument(arguments: dict[str, str], name: str, max_length: int) -> str:
+    if set(arguments) != {name}:
+        raise OnboardingError(f"tool requires exactly one {name!r} argument")
+    value = arguments[name].strip()
+    if not value or len(value) > max_length:
+        raise OnboardingError(f"tool {name!r} argument must be between 1 and {max_length} characters")
+    return value
+
+
+def _inventoried_file(root: Path, inventory_paths: set[str], requested_path: str) -> tuple[str, Path]:
+    relative_path = PurePosixPath(requested_path)
+    if relative_path.is_absolute() or not relative_path.parts or ".." in relative_path.parts:
+        raise OnboardingError("file path must be a relative inventory path")
+    normalized_path = relative_path.as_posix()
+    if normalized_path not in inventory_paths:
+        raise OnboardingNotFoundError(normalized_path)
+    path = root.joinpath(*relative_path.parts)
+    try:
+        resolved_path = path.resolve(strict=True)
+    except OSError as error:
+        raise OnboardingNotFoundError(normalized_path) from error
+    if path.is_symlink() or not path.is_file() or not _is_within(root, resolved_path):
+        raise OnboardingError("inventory path no longer resolves to a regular file")
+    return normalized_path, path
+
+
+def _matches_glob(path: str, pattern: str) -> bool:
+    candidate = PurePosixPath(path)
+    return candidate.match(pattern) or (pattern.startswith("**/") and candidate.match(pattern[3:]))
+
+
+def execute_repository_tool(record: OnboardingRecord, invocation: RepositoryToolInvocation) -> RepositoryToolResponse:
+    root = validate_repository_path(record.repository_path)
+    inventory_paths = {entry.path for entry in record.files}
+
+    if invocation.tool == "read_file":
+        requested_path = _tool_argument(invocation.arguments, "path", 4096)
+        normalized_path, path = _inventoried_file(root, inventory_paths, requested_path)
+        contents = _read_bounded_text(root, path, "repository file")
+        if contents is None:
+            raise OnboardingNotFoundError(normalized_path)
+        return RepositoryToolResponse(
+            tool=invocation.tool,
+            result=RepositoryFileReadResult(path=normalized_path, content=contents),
+        )
+
+    if invocation.tool == "glob":
+        pattern = _tool_argument(invocation.arguments, "pattern", 512)
+        pattern_path = PurePosixPath(pattern)
+        if pattern_path.is_absolute() or ".." in pattern_path.parts:
+            raise OnboardingError("glob pattern must be relative to the repository root")
+        paths = [path for path in sorted(inventory_paths) if _matches_glob(path, pattern)]
+        return RepositoryToolResponse(
+            tool=invocation.tool,
+            result=RepositoryGlobResult(paths=paths[:MAX_GLOB_RESULTS], truncated=len(paths) > MAX_GLOB_RESULTS),
+        )
+
+    query = _tool_argument(invocation.arguments, "query", 256)
+    matches: list[RepositorySearchMatch] = []
+    scanned_files = 0
+    scanned_bytes = 0
+    for entry in sorted(record.files, key=lambda item: item.path):
+        if scanned_bytes + entry.size_bytes > MAX_GREP_BYTES:
+            return RepositoryToolResponse(
+                tool=invocation.tool,
+                result=RepositoryGrepResult(matches=matches, scanned_files=scanned_files, truncated=True),
+            )
+        normalized_path, path = _inventoried_file(root, inventory_paths, entry.path)
+        contents = _read_bounded_text(root, path, "repository file")
+        if contents is None:
+            raise OnboardingNotFoundError(normalized_path)
+        scanned_files += 1
+        scanned_bytes += entry.size_bytes
+        for line_number, line in enumerate(contents.splitlines(), start=1):
+            if query not in line:
+                continue
+            matches.append(RepositorySearchMatch(path=normalized_path, line_number=line_number, line=line[:MAX_GREP_LINE_CHARS]))
+            if len(matches) >= MAX_GREP_MATCHES:
+                return RepositoryToolResponse(
+                    tool=invocation.tool,
+                    result=RepositoryGrepResult(matches=matches, scanned_files=scanned_files, truncated=True),
+                )
+    return RepositoryToolResponse(
+        tool=invocation.tool,
+        result=RepositoryGrepResult(matches=matches, scanned_files=scanned_files),
+    )
 
 
 def _yaml_path_filters(contents: str) -> list[tuple[str, list[str], list[str]]]:

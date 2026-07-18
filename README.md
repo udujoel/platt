@@ -41,6 +41,9 @@ Implemented:
   Terraform module sources, a local Terraform module graph (variables, outputs, and
   safe relative-source edges), and Azure Pipeline YAML path filters, then persists the
   result in SQLite. It never clones repositories or contacts Azure, Terraform, or git remotes.
+- Audited read-only repository tools for an onboarding record: bounded file reads,
+  inventory globbing, and literal content search. Every invocation revalidates the
+  trusted checkout and rejects paths outside the recorded inventory.
 - React/Vite shell with the audit inspector, chat panel, animated office, speech bubble, and state-specific Platt rig.
 - Orca work packages for planning, backend, frontend, and operations.
 
@@ -65,6 +68,20 @@ Retrieve the persisted response with `GET /onboarding/{id}`. Use
 `GET /onboarding/{id}/module-trace?module_path=modules/example` to obtain a
 deterministic local-module path back to the repository root. Only relative sources
 that resolve to a directory inside the checked-out repository become graph edges.
+
+`GET /onboarding/{id}/tools` advertises three read-only repository tools. Call
+`POST /onboarding/{id}/tools/invoke` with a tool name and its one argument:
+
+```bash
+curl -X POST http://127.0.0.1:8000/onboarding/{id}/tools/invoke \
+  -H 'content-type: application/json' \
+  -d '{"tool":"grep","arguments":{"query":"azurerm_storage_account"}}'
+```
+
+The tools are `read_file` (`path`), `glob` (`pattern`), and literal `grep`
+(`query`). They only read paths from the original bounded inventory, revalidate
+the trusted checkout before every call, reject symlinks, record an audit entry,
+and report when their 500-path or one-megabyte search budgets truncate results.
 
 Records are stored in the owner-only `.platt/` app-state directory by default; set
 `PLATT_ONBOARDING_DB` to use another local SQLite path. Scanning is capped at 5,000
