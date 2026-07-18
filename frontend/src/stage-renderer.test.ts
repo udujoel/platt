@@ -12,6 +12,9 @@ describe("selectStageRenderer", () => {
     expect(selectStageRenderer({ supportsWebGL: true, prefersReducedMotion: true })).toBe("fallback");
   });
 
+});
+
+describe("createWebGLContextLossHandler", () => {
   it("falls back when an active WebGL context is lost", () => {
     const onFallback = vi.fn();
     const preventDefault = vi.fn();
