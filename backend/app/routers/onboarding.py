@@ -2,8 +2,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request, status
 
-from app.models import OnboardingRecord, OnboardingRequest
-from app.services.onboarding import OnboardingError, OnboardingNotFoundError, OnboardingStore, inspect_repository
+from app.models import OnboardingRecord, OnboardingRequest, TerraformModuleTrace
+from app.services.onboarding import OnboardingError, OnboardingNotFoundError, OnboardingStore, inspect_repository, trace_module
 
 router = APIRouter(prefix="/onboarding", tags=["onboarding"])
 
@@ -31,3 +31,11 @@ def get_onboarding_record(request: Request, onboarding_id: UUID) -> OnboardingRe
         return _store(request).get(onboarding_id)
     except OnboardingNotFoundError as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="onboarding record not found") from error
+
+
+@router.get("/{onboarding_id}/module-trace", response_model=TerraformModuleTrace)
+def get_module_trace(request: Request, onboarding_id: UUID, module_path: str) -> TerraformModuleTrace:
+    try:
+        return trace_module(_store(request).get(onboarding_id), module_path)
+    except OnboardingNotFoundError as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="onboarding record or module not found") from error

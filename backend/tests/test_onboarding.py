@@ -95,6 +95,92 @@ def test_onboarding_record_is_persisted_and_retrievable(tmp_path: Path) -> None:
     assert fetched.json() == created.json()
 
 
+def test_onboarding_builds_a_local_module_graph_and_traces_to_root(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    application_module = repository / "modules" / "application"
+    logging_module = repository / "modules" / "logging"
+    application_module.mkdir(parents=True)
+    logging_module.mkdir(parents=True)
+    (repository / "main.tf").write_text(
+        '''variable "environment" { type = string }
+module "application" {
+  source = "./modules/application"
+}
+output "application_id" { value = module.application.id }
+'''
+    )
+    (application_module / "main.tf").write_text(
+        '''variable "name" { type = string }
+module "logging" {
+  source = "../logging"
+}
+'''
+    )
+    (logging_module / "main.tf").write_text('output "workspace_id" { value = "example" }\n')
+    client = _client(tmp_path)
+
+    created = client.post("/onboarding", json={"repository_path": str(repository)})
+
+    assert created.status_code == 201
+    record = created.json()
+    assert record["terraform_module_nodes"] == [
+        {"path": ".", "variables": ["environment"], "outputs": ["application_id"]},
+        {"path": "modules/application", "variables": ["name"], "outputs": []},
+        {"path": "modules/logging", "variables": [], "outputs": ["workspace_id"]},
+    ]
+    assert record["terraform_module_edges"] == [
+        {
+            "caller_path": ".",
+            "module_name": "application",
+            "source": "./modules/application",
+            "target_path": "modules/application",
+        },
+        {
+            "caller_path": "modules/application",
+            "module_name": "logging",
+            "source": "../logging",
+            "target_path": "modules/logging",
+        },
+    ]
+
+    trace = client.get(f"/onboarding/{record['id']}/module-trace", params={"module_path": "modules/logging"})
+
+    assert trace.status_code == 200
+    assert trace.json()["path_to_root"] == [".", "modules/application", "modules/logging"]
+    assert [edge["module_name"] for edge in trace.json()["edges"]] == ["application", "logging"]
+
+
+def test_module_trace_rejects_an_unknown_module(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    (repository / "main.tf").write_text('variable "environment" { type = string }\n')
+    client = _client(tmp_path)
+    created = client.post("/onboarding", json={"repository_path": str(repository)})
+
+    response = client.get(f"/onboarding/{created.json()['id']}/module-trace", params={"module_path": "missing"})
+
+    assert response.status_code == 404
+
+
+def test_module_trace_uses_a_root_connected_parent_when_the_first_parent_is_orphaned(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    for module_path in ("a", "b", "shared"):
+        (repository / module_path).mkdir(parents=True)
+    (repository / "main.tf").write_text('module "b" { source = "./b" }\n')
+    (repository / "a" / "main.tf").write_text('module "shared" { source = "../shared" }\n')
+    (repository / "b" / "main.tf").write_text('module "shared" { source = "../shared" }\n')
+    (repository / "shared" / "main.tf").write_text('variable "name" { type = string }\n')
+    client = _client(tmp_path)
+
+    created = client.post("/onboarding", json={"repository_path": str(repository)})
+    assert created.status_code == 201
+    trace = client.get(f"/onboarding/{created.json()['id']}/module-trace", params={"module_path": "shared"})
+
+    assert trace.status_code == 200
+    assert trace.json()["path_to_root"] == [".", "b", "shared"]
+    assert [edge["caller_path"] for edge in trace.json()["edges"]] == [".", "b"]
+
+
 def test_onboarding_rejects_non_absolute_or_missing_paths(tmp_path: Path) -> None:
     client = _client(tmp_path)
 

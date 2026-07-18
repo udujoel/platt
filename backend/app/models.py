@@ -171,6 +171,25 @@ class TerraformModuleReference(BaseModel):
     source: str
 
 
+class TerraformModuleNode(BaseModel):
+    path: str
+    variables: list[str] = Field(default_factory=list)
+    outputs: list[str] = Field(default_factory=list)
+
+
+class TerraformModuleEdge(BaseModel):
+    caller_path: str
+    module_name: str
+    source: str
+    target_path: str
+
+
+class TerraformModuleTrace(BaseModel):
+    module_path: str
+    path_to_root: list[str]
+    edges: list[TerraformModuleEdge]
+
+
 class PipelinePathFilter(BaseModel):
     scope: Literal["trigger", "pr", "schedules"]
     include_paths: list[str] = Field(default_factory=list)
@@ -188,4 +207,6 @@ class OnboardingRecord(BaseModel):
     created_at: datetime
     files: list[FileInventoryEntry]
     terraform_modules: list[TerraformModuleReference]
+    terraform_module_nodes: list[TerraformModuleNode] = Field(default_factory=list)
+    terraform_module_edges: list[TerraformModuleEdge] = Field(default_factory=list)
     pipeline_yamls: list[PipelineYamlInventory]
