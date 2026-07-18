@@ -338,6 +338,7 @@ function useBackendEvents() {
     let closed = false;
     let socket: WebSocket | null = null;
     let retryTimer: number | undefined;
+    let stabilityTimer: number | undefined;
     let retryAttempt = 0;
     let hasConnected = false;
     let recovering = false;
@@ -345,16 +346,28 @@ function useBackendEvents() {
     let queuedEvents: BackendEvent[] = [];
 
     const deliver = (event: BackendEvent) => {
-      useEventStore.getState().applyBackendEvent(event);
+      const store = useEventStore.getState();
+      if (store.seenBackendEventIds.includes(event.id)) return;
+      store.applyBackendEvent(event);
       setLastEvent(event);
+    };
+
+    const markConnectionStable = () => {
+      retryAttempt = 0;
+      window.clearTimeout(stabilityTimer);
+      stabilityTimer = undefined;
     };
 
     const hydrateAfterReconnect = async () => {
       const activeRecovery = ++recoveryVersion;
       recovering = true;
       const recoveredEvents: BackendEvent[] = [];
+      const recoveryController = new AbortController();
+      const recoveryTimer = window.setTimeout(() => recoveryController.abort(), 5_000);
       try {
-        const response = await requestJson<{ events: unknown[] }>("/events/recent?limit=100");
+        const response = await requestJson<{ events: unknown[] }>("/events/recent?limit=100", {
+          signal: recoveryController.signal,
+        });
         for (const value of response.events) {
           const event = parseBackendEvent(value);
           if (event) recoveredEvents.push(event);
@@ -364,12 +377,14 @@ function useBackendEvents() {
           useEventStore.getState().addLocalEvent("concerned", "Could not recover persisted events after reconnect");
         }
       } finally {
-        if (closed || activeRecovery !== recoveryVersion) return;
-        recoveredEvents.forEach(deliver);
-        recovering = false;
-        const pendingEvents = queuedEvents;
-        queuedEvents = [];
-        pendingEvents.forEach(deliver);
+        window.clearTimeout(recoveryTimer);
+        if (!closed && activeRecovery === recoveryVersion) {
+          recoveredEvents.forEach(deliver);
+          recovering = false;
+          const pendingEvents = queuedEvents;
+          queuedEvents = [];
+          pendingEvents.forEach(deliver);
+        }
       }
     };
 
@@ -390,7 +405,8 @@ function useBackendEvents() {
 
       nextSocket.addEventListener("open", () => {
         useEventStore.getState().setConnection("connected");
-        retryAttempt = 0;
+        window.clearTimeout(stabilityTimer);
+        stabilityTimer = window.setTimeout(markConnectionStable, 5_000);
         if (hasConnected) void hydrateAfterReconnect();
         hasConnected = true;
       });
@@ -402,6 +418,7 @@ function useBackendEvents() {
             useEventStore.getState().addLocalEvent("concerned", "Received an unsupported backend event");
             return;
           }
+          markConnectionStable();
           if (recovering) queuedEvents.push(event);
           else deliver(event);
         } catch {
@@ -411,6 +428,8 @@ function useBackendEvents() {
 
       nextSocket.addEventListener("close", () => {
         if (socket === nextSocket) socket = null;
+        window.clearTimeout(stabilityTimer);
+        stabilityTimer = undefined;
         if (closed) return;
         useEventStore.getState().setConnection("disconnected");
         scheduleReconnect();
@@ -427,6 +446,7 @@ function useBackendEvents() {
       closed = true;
       recoveryVersion += 1;
       window.clearTimeout(retryTimer);
+      window.clearTimeout(stabilityTimer);
       socket?.close();
     };
   }, []);

@@ -110,16 +110,18 @@ def test_recent_events_replay_and_job_history_preserve_publication_order(client:
     created_at = datetime(2026, 7, 18, 1, 0, tzinfo=timezone.utc)
     first = AgentStateEvent(job_id=job_id, state=PlattState.THINKING, label="First", created_at=created_at)
     second = AgentStateEvent(job_id=job_id, state=PlattState.WORKING, label="Second", created_at=created_at)
+    third = AgentStateEvent(job_id=job_id, state=PlattState.TALKING, label="Third", created_at=created_at)
     client.app.state.persistence.record_job(job_id, prompt="Ordered replay")
     client.app.state.persistence.record_event(first)
     client.app.state.persistence.record_event(second)
+    client.app.state.persistence.record_event(third)
 
     replay = client.get("/events/recent", params={"limit": 2})
     history = client.get(f"/jobs/{job_id}/events")
 
     assert replay.status_code == 200
-    assert [event["label"] for event in replay.json()["events"]] == ["First", "Second"]
-    assert [json.loads(event["payload"])["label"] for event in history.json()["events"]] == ["First", "Second"]
+    assert [event["label"] for event in replay.json()["events"]] == ["Second", "Third"]
+    assert [json.loads(event["payload"])["label"] for event in history.json()["events"]] == ["First", "Second", "Third"]
 
 
 def test_recent_events_replay_rejects_an_unbounded_limit(client: TestClient) -> None:
