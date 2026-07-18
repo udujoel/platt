@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from enum import StrEnum
 from pathlib import Path
-from typing import Annotated, Literal, Union
+from typing import Annotated, Any, Literal, Union
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -188,6 +188,47 @@ class TerraformModuleTrace(BaseModel):
     module_path: str
     path_to_root: list[str]
     edges: list[TerraformModuleEdge]
+
+
+RepositoryToolName = Literal["read_file", "glob", "grep"]
+
+
+class RepositoryToolDefinition(BaseModel):
+    name: RepositoryToolName
+    description: str
+    input_schema: dict[str, Any]
+
+
+class RepositoryToolInvocation(BaseModel):
+    tool: RepositoryToolName
+    arguments: dict[str, str] = Field(default_factory=dict, max_length=2)
+
+
+class RepositoryFileReadResult(BaseModel):
+    path: str
+    content: str
+
+
+class RepositoryGlobResult(BaseModel):
+    paths: list[str]
+    truncated: bool = False
+
+
+class RepositorySearchMatch(BaseModel):
+    path: str
+    line_number: int = Field(ge=1)
+    line: str
+
+
+class RepositoryGrepResult(BaseModel):
+    matches: list[RepositorySearchMatch]
+    scanned_files: int = Field(ge=0)
+    truncated: bool = False
+
+
+class RepositoryToolResponse(BaseModel):
+    tool: RepositoryToolName
+    result: Union[RepositoryFileReadResult, RepositoryGlobResult, RepositoryGrepResult]
 
 
 class PipelinePathFilter(BaseModel):
