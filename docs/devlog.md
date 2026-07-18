@@ -3,6 +3,13 @@
 This is the concise, human-readable record of validated delivery decisions.
 Detailed implementation and release notes belong in the PR and changelog.
 
+## 2026-07-18 — Client reconnect-policy coverage
+
+- Extracted the local WebSocket retry policy into a small shared module and
+  added frontend tests for its exponential backoff, cap, and reset behavior.
+- Frontend tests now run as a required CI step, closing the remaining automated
+  retry-policy coverage gap in the local 0.2 safety work.
+
 ## 2026-07-18 — Explicit planned read-only execution
 
 - An operator can now run an individual proposed review-plan step from the

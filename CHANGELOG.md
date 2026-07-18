@@ -18,6 +18,8 @@ patch version.
   recover persisted event history in stable order without duplicate rendering.
 - Explicit per-step execution for pre-planned read-only repository work, with
   bounded results and audit events linked to the original plan job.
+- Automated frontend retry-policy coverage, including exponential backoff,
+  capped delays, and stable-connection resets, enforced in CI.
 
 ## [0.1.1] — 2026-07-18
 

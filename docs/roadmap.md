@@ -47,8 +47,9 @@ completed 3D implementation.
 - Added a bounded persisted-event recovery window with deterministic ordering;
   the local client uses capped retry backoff and rehydrates that window after a
   WebSocket reconnect without duplicating live events.
-- Extend automated coverage for retry/reconnect behaviour, alongside the
-  existing path-boundary, refusal, and event-ordering coverage, before enabling
+- Added frontend retry-policy tests for exponential backoff, the delay cap, and
+  stable-connection reset behavior. Continue to extend this coverage alongside
+  the existing path-boundary, refusal, and event-ordering checks before enabling
   any remote side effect.
 
 ### 0.3 — Deployable service boundary
