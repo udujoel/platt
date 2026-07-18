@@ -1,8 +1,22 @@
 import React from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { MathUtils, type Group, type Mesh } from "three";
+import { createWebGLContextLossHandler } from "./stage-renderer";
 import { getThreeStagePose } from "./three-stage-pose";
 import type { ThreeStageState } from "./three-stage-pose";
+
+function WebGLContextLossGuard({ onContextLost }: { onContextLost: () => void }) {
+  const gl = useThree((state) => state.gl);
+
+  React.useEffect(() => {
+    const canvas = gl.domElement;
+    const handleContextLoss = createWebGLContextLossHandler(onContextLost);
+    canvas.addEventListener("webglcontextlost", handleContextLoss);
+    return () => canvas.removeEventListener("webglcontextlost", handleContextLoss);
+  }, [gl, onContextLost]);
+
+  return null;
+}
 
 function PlattRig({ state }: { state: ThreeStageState }) {
   const rig = React.useRef<Group>(null);
@@ -74,10 +88,19 @@ function ThreeOfficeWorld({ state }: { state: ThreeStageState }) {
   );
 }
 
-export function ThreeOfficeScene({ state, speech }: { state: ThreeStageState; speech: string }) {
+export function ThreeOfficeScene({
+  state,
+  speech,
+  onContextLost,
+}: {
+  state: ThreeStageState;
+  speech: string;
+  onContextLost: () => void;
+}) {
   return (
     <div className="threeOfficeScene">
       <Canvas aria-hidden="true" camera={{ fov: 42, position: [0, 3.15, 7.6] }} dpr={[1, 1.5]} gl={{ antialias: true, powerPreference: "low-power" }} shadows>
+        <WebGLContextLossGuard onContextLost={onContextLost} />
         <ThreeOfficeWorld state={state} />
       </Canvas>
       {state === "talking" && speech ? <div className="threeSpeechBubble" role="status" aria-live="polite" aria-atomic="true">{speech.slice(-180)}</div> : null}

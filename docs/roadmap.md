@@ -96,6 +96,8 @@ renderer chunk; it is not yet the verified, production-ready 1.0 release.
 - Defined and tested the 3D rig's pose contract for every event state, so
   state-specific movement stays aligned with the existing truthful projection
   contract as the renderer evolves.
+- Added and tested a runtime WebGL-context-loss path that retains a usable 2D
+  stage if the browser loses the active 3D renderer after it has started.
 - Ship the mandatory R3F character and state rig, driven by the same truthful
   job/event state as the 2D implementation.
 - Preserve keyboard operation, readable status/audit views, reduced-motion

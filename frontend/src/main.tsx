@@ -56,6 +56,7 @@ function browserSupportsWebGL() {
 
 function useStageRenderer(): [StageRenderer, () => void] {
   const [renderer, setRenderer] = React.useState<StageRenderer>("fallback");
+  const useFallback = React.useCallback(() => setRenderer("fallback"), []);
 
   React.useEffect(() => {
     const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -71,7 +72,7 @@ function useStageRenderer(): [StageRenderer, () => void] {
     return () => motionQuery.removeEventListener("change", refreshRenderer);
   }, []);
 
-  return [renderer, () => setRenderer("fallback")];
+  return [renderer, useFallback];
 }
 
 type EventBase = {
@@ -603,7 +604,7 @@ function Stage({ readiness }: { readiness: BackendReadiness }) {
       {renderer === "three" ? (
         <ThreeOfficeSceneBoundary fallback={<OfficeScene state={state} speech={latestPlattMessage} />} onFailure={useFallback}>
           <React.Suspense fallback={<OfficeScene state={state} speech={latestPlattMessage} />}>
-            <ThreeOfficeScene state={state} speech={latestPlattMessage} />
+            <ThreeOfficeScene state={state} speech={latestPlattMessage} onContextLost={useFallback} />
           </React.Suspense>
         </ThreeOfficeSceneBoundary>
       ) : <OfficeScene state={state} speech={latestPlattMessage} />}

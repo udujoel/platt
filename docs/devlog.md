@@ -3,6 +3,13 @@
 This is the concise, human-readable record of validated delivery decisions.
 Detailed implementation and release notes belong in the PR and changelog.
 
+## 2026-07-18 — Runtime WebGL fallback recovery
+
+- The 3D canvas now listens for a lost WebGL context, prevents the browser's
+  default recovery path, and returns Platt to its existing 2D renderer.
+- Added a focused fallback-handler test and a live browser exercise that
+  dispatches a context-loss event and confirms the stage remains usable.
+
 ## 2026-07-18 — Complete R3F event-pose contract
 
 - Moved the 3D rig's per-state behavior into one deterministic pose contract

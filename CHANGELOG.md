@@ -16,6 +16,8 @@ patch version.
   remains the tested accessibility and non-WebGL fallback.
 - A tested 3D pose contract for every event state, including paced thinking,
   typing, talking gestures, approval pointing, celebration, and concern.
+- Runtime WebGL-context-loss handling that switches an already-rendered 3D
+  stage to the accessible 2D fallback instead of leaving a dead canvas.
 
 ## [0.2.0] — 2026-07-18
 
