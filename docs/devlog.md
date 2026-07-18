@@ -3,6 +3,16 @@
 This is the concise, human-readable record of validated delivery decisions.
 Detailed implementation and release notes belong in the PR and changelog.
 
+## 2026-07-18 — Complete R3F event-pose contract
+
+- Moved the 3D rig's per-state behavior into one deterministic pose contract
+  and added direct coverage for steady and time-driven poses. Listening,
+  thinking, working, talking, approval, celebration, and concern now each have
+  a deliberate visual expression tied to the existing event state.
+- Kept the R3F canvas as an optional presentation layer: it remains deferred,
+  preserves the 2D fallback, and does not alter the event contract or grant new
+  agent authority.
+
 ## 2026-07-18 — Accessible R3F stage foundation
 
 - Began the 1.0 visual track with a procedural R3F office and Platt rig driven

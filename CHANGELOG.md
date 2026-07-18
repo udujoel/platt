@@ -14,6 +14,8 @@ patch version.
 - Capability-based renderer selection: WebGL-capable browsers without a
   reduced-motion preference use the 3D scene, while the existing 2D office
   remains the tested accessibility and non-WebGL fallback.
+- A tested 3D pose contract for every event state, including paced thinking,
+  typing, talking gestures, approval pointing, celebration, and concern.
 
 ## [0.2.0] — 2026-07-18
 

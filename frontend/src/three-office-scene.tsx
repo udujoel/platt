@@ -1,41 +1,37 @@
 import React from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { MathUtils, type Group } from "three";
-
-export type ThreeStageState =
-  | "idle"
-  | "listening"
-  | "thinking"
-  | "working"
-  | "talking"
-  | "awaiting_approval"
-  | "celebrating"
-  | "concerned";
+import { MathUtils, type Group, type Mesh } from "three";
+import { getThreeStagePose } from "./three-stage-pose";
+import type { ThreeStageState } from "./three-stage-pose";
 
 function PlattRig({ state }: { state: ThreeStageState }) {
   const rig = React.useRef<Group>(null);
+  const head = React.useRef<Group>(null);
+  const leftArm = React.useRef<Mesh>(null);
+  const rightArm = React.useRef<Mesh>(null);
 
   useFrame(({ clock }, delta) => {
-    if (!rig.current) return;
-    const elapsed = clock.getElapsedTime();
-    const targetX = state === "working" ? 1.55 : state === "awaiting_approval" ? -1.55 : 0;
-    rig.current.position.x = MathUtils.damp(rig.current.position.x, targetX, 4, delta);
-    rig.current.position.y = state === "celebrating" ? 1.05 + Math.abs(Math.sin(elapsed * 8)) * 0.34 : 1.05;
-    rig.current.rotation.z = state === "concerned" ? Math.sin(elapsed * 22) * 0.06 : 0;
+    const pose = getThreeStagePose(state, clock.getElapsedTime());
+    if (rig.current) {
+      rig.current.position.x = MathUtils.damp(rig.current.position.x, pose.x, 4, delta);
+      rig.current.position.y = MathUtils.damp(rig.current.position.y, pose.y, 8, delta);
+      rig.current.rotation.z = MathUtils.damp(rig.current.rotation.z, pose.bodyLean, 10, delta);
+    }
+    if (head.current) head.current.rotation.z = MathUtils.damp(head.current.rotation.z, pose.headTilt, 8, delta);
+    if (leftArm.current) leftArm.current.rotation.z = MathUtils.damp(leftArm.current.rotation.z, pose.leftArm, 12, delta);
+    if (rightArm.current) rightArm.current.rotation.z = MathUtils.damp(rightArm.current.rotation.z, pose.rightArm, 12, delta);
   });
-
-  const typing = state === "working";
-  const pointing = state === "awaiting_approval";
-  const talking = state === "talking";
 
   return (
     <group ref={rig} position={[0, 1.05, 0]}>
-      <mesh position={[0, 0.93, 0]} castShadow><sphereGeometry args={[0.39, 18, 14]} /><meshStandardMaterial color="#c98c64" roughness={0.7} /></mesh>
-      <mesh position={[0, 1.18, 0.12]} castShadow><boxGeometry args={[0.5, 0.14, 0.22]} /><meshStandardMaterial color="#263145" roughness={0.82} /></mesh>
+      <group ref={head} position={[0, 0.93, 0]}>
+        <mesh castShadow><sphereGeometry args={[0.39, 18, 14]} /><meshStandardMaterial color="#c98c64" roughness={0.7} /></mesh>
+        <mesh position={[0, 0.25, 0.12]} castShadow><boxGeometry args={[0.5, 0.14, 0.22]} /><meshStandardMaterial color="#263145" roughness={0.82} /></mesh>
+      </group>
       <mesh position={[0, 0.28, 0]} castShadow><boxGeometry args={[0.7, 0.95, 0.38]} /><meshStandardMaterial color="#304969" roughness={0.78} /></mesh>
       <mesh position={[0, 0.38, 0.21]}><boxGeometry args={[0.23, 0.58, 0.03]} /><meshStandardMaterial color="#e5edf0" /></mesh>
-      <mesh position={[-0.24, 0.48, 0]} rotation={[0, 0, typing ? 0.8 : pointing ? 1.1 : 0.28]} castShadow><capsuleGeometry args={[0.11, 0.62, 6, 10]} /><meshStandardMaterial color="#304969" /></mesh>
-      <mesh position={[0.24, 0.48, 0]} rotation={[0, 0, typing ? -0.8 : pointing ? -1.25 : talking ? -0.72 : -0.28]} castShadow><capsuleGeometry args={[0.11, 0.62, 6, 10]} /><meshStandardMaterial color="#304969" /></mesh>
+      <mesh ref={leftArm} position={[-0.24, 0.48, 0]} castShadow><capsuleGeometry args={[0.11, 0.62, 6, 10]} /><meshStandardMaterial color="#304969" /></mesh>
+      <mesh ref={rightArm} position={[0.24, 0.48, 0]} castShadow><capsuleGeometry args={[0.11, 0.62, 6, 10]} /><meshStandardMaterial color="#304969" /></mesh>
       <mesh position={[-0.2, -0.54, 0]} castShadow><boxGeometry args={[0.2, 0.55, 0.23]} /><meshStandardMaterial color="#263d5b" /></mesh>
       <mesh position={[0.2, -0.54, 0]} castShadow><boxGeometry args={[0.2, 0.55, 0.23]} /><meshStandardMaterial color="#263d5b" /></mesh>
       <mesh position={[-0.2, -0.84, 0.08]} castShadow><boxGeometry args={[0.3, 0.12, 0.42]} /><meshStandardMaterial color="#19202c" /></mesh>

@@ -93,6 +93,9 @@ renderer chunk; it is not yet the verified, production-ready 1.0 release.
   character rig, plus a tested 2D fallback for reduced-motion and non-WebGL
   browsers. The R3F code is lazy-loaded so it does not inflate the default
   frontend bundle.
+- Defined and tested the 3D rig's pose contract for every event state, so
+  state-specific movement stays aligned with the existing truthful projection
+  contract as the renderer evolves.
 - Ship the mandatory R3F character and state rig, driven by the same truthful
   job/event state as the 2D implementation.
 - Preserve keyboard operation, readable status/audit views, reduced-motion
