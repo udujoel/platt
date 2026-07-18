@@ -16,13 +16,13 @@ Detailed implementation and release notes belong in the PR and changelog.
   responsive/device verification, deployed validation, the complete release
   evidence, and a versioned major-release decision.
 
-## 2026-07-18 — 0.2.0 release candidate
+## 2026-07-18 — 0.2.0 release
 
 - Aligned the backend and frontend package declarations, changelog, roadmap,
   and release policy on the bounded repository-intelligence checkpoint.
-- The release remains subject to the normal PR checks, CodeRabbit and Codex
-  review handling, deployment verification, and a tag from the verified merge
-  commit.
+- PR #24 passed its required checks and CodeRabbit review, then merged as
+  `46b447c`. Its Vercel production deployment was successful and that verified
+  merge was tagged `v0.2.0`.
 
 ## 2026-07-18 — Repository-bound plan execution
 

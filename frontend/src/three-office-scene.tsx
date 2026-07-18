@@ -80,11 +80,11 @@ function ThreeOfficeWorld({ state }: { state: ThreeStageState }) {
 
 export function ThreeOfficeScene({ state, speech }: { state: ThreeStageState; speech: string }) {
   return (
-    <div className="threeOfficeScene" aria-hidden="true">
-      <Canvas camera={{ fov: 42, position: [0, 3.15, 7.6] }} dpr={[1, 1.5]} gl={{ antialias: true, powerPreference: "low-power" }} shadows>
+    <div className="threeOfficeScene">
+      <Canvas aria-hidden="true" camera={{ fov: 42, position: [0, 3.15, 7.6] }} dpr={[1, 1.5]} gl={{ antialias: true, powerPreference: "low-power" }} shadows>
         <ThreeOfficeWorld state={state} />
       </Canvas>
-      {state === "talking" && speech ? <div className="threeSpeechBubble">{speech.slice(-180)}</div> : null}
+      {state === "talking" && speech ? <div className="threeSpeechBubble" role="status" aria-live="polite" aria-atomic="true">{speech.slice(-180)}</div> : null}
     </div>
   );
 }
