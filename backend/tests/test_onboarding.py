@@ -173,6 +173,7 @@ def test_module_trace_uses_a_root_connected_parent_when_the_first_parent_is_orph
     client = _client(tmp_path)
 
     created = client.post("/onboarding", json={"repository_path": str(repository)})
+    assert created.status_code == 201
     trace = client.get(f"/onboarding/{created.json()['id']}/module-trace", params={"module_path": "shared"})
 
     assert trace.status_code == 200
