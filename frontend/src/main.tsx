@@ -13,7 +13,7 @@ import type { PersistedJobEvent } from "./job-event-description";
 import { selectStageRenderer } from "./stage-renderer";
 import type { StageRenderer } from "./stage-renderer";
 
-const ThreeOfficeScene = React.lazy(() => import("./three-office-scene").then(({ ThreeOfficeScene: Scene }) => ({ default: Scene })));
+const ThreeOfficeScene = React.lazy(() => import("./scene/ThreeOfficeScene").then(({ ThreeOfficeScene: Scene }) => ({ default: Scene })));
 
 class ThreeOfficeSceneBoundary extends React.Component<
   { children: React.ReactNode; fallback: React.ReactNode; onFailure: () => void },
