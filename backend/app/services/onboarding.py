@@ -9,14 +9,13 @@ from __future__ import annotations
 import json
 import os
 import re
-import sqlite3
 import stat
 from collections import deque
 from collections.abc import Iterator
 from datetime import datetime, timezone
 from io import StringIO
 from pathlib import Path, PurePosixPath
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import hcl2
 
@@ -712,62 +711,3 @@ def inspect_repository(repository_path: str) -> OnboardingRecord:
         terraform_module_edges=module_edges,
         pipeline_yamls=_pipeline_yamls(root, files),
     )
-
-
-class OnboardingStore:
-    """Small SQLite store for completed local onboarding records."""
-
-    def __init__(self, database_path: Path | None = None) -> None:
-        configured_path = os.environ.get("PLATT_ONBOARDING_DB", "").strip()
-        self._uses_private_default = database_path is None and not configured_path
-        if database_path is not None:
-            self.database_path = database_path
-        elif configured_path:
-            self.database_path = Path(configured_path)
-        else:
-            self.database_path = self._private_default_database_path()
-        self._initialize()
-
-    @staticmethod
-    def _private_default_database_path() -> Path:
-        data_directory = Path.cwd() / ".platt"
-        data_directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-        data_directory.chmod(0o700)
-        return data_directory / "onboarding.sqlite3"
-
-    def _connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(self.database_path)
-
-    def _initialize(self) -> None:
-        self.database_path.parent.mkdir(parents=True, exist_ok=True)
-        with self._connect() as connection:
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS onboarding_records (
-                    id TEXT PRIMARY KEY,
-                    repository_path TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    record_json TEXT NOT NULL
-                )
-                """
-            )
-        if self._uses_private_default:
-            self.database_path.chmod(0o600)
-
-    def save(self, record: OnboardingRecord) -> OnboardingRecord:
-        payload = record.model_dump_json()
-        with self._connect() as connection:
-            connection.execute(
-                "INSERT INTO onboarding_records (id, repository_path, created_at, record_json) VALUES (?, ?, ?, ?)",
-                (str(record.id), record.repository_path, record.created_at.isoformat(), payload),
-            )
-        return record
-
-    def get(self, onboarding_id: UUID) -> OnboardingRecord:
-        with self._connect() as connection:
-            row = connection.execute(
-                "SELECT record_json FROM onboarding_records WHERE id = ?", (str(onboarding_id),)
-            ).fetchone()
-        if row is None:
-            raise OnboardingNotFoundError(str(onboarding_id))
-        return OnboardingRecord.model_validate(json.loads(row[0]))

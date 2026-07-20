@@ -25,7 +25,7 @@ def configure_onboarding_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
 
 
 def _client(tmp_path: Path) -> TestClient:
-    return TestClient(create_app(db_path=tmp_path / "platt.sqlite3", onboarding_db_path=tmp_path / "onboarding.sqlite3"))
+    return TestClient(create_app(db_path=tmp_path / "platt.sqlite3"))
 
 
 def test_onboarding_indexes_local_files_terraform_and_pipeline_paths(tmp_path: Path) -> None:
