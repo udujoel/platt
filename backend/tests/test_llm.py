@@ -63,7 +63,27 @@ class _FakeAsyncOpenAI:
         self.api_key = api_key
         self.base_url = base_url
         self.chat = _FakeChat(["Hello, ", None, "world."])
+        self.closed = False
         _FakeAsyncOpenAI.last_instance = self
+
+    async def close(self) -> None:
+        self.closed = True
+
+    async def __aenter__(self) -> "_FakeAsyncOpenAI":
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        await self.close()
+
+
+class _FakeAsyncOpenAIRaisingOnCreate(_FakeAsyncOpenAI):
+    async def __aenter__(self) -> "_FakeAsyncOpenAIRaisingOnCreate":
+        self.chat.completions.create = _raise_provider_error
+        return self
+
+
+async def _raise_provider_error(**kwargs):
+    raise RuntimeError("provider unavailable")
 
 
 @pytest.fixture(autouse=True)
@@ -105,6 +125,30 @@ def test_groq_streaming_llm_uses_persona_prompt_when_none_given(monkeypatch):
     assert "Platt" in call["messages"][0]["content"]
 
 
+def test_groq_streaming_llm_closes_the_client_after_a_successful_stream(monkeypatch):
+    monkeypatch.setattr("openai.AsyncOpenAI", _FakeAsyncOpenAI)
+
+    llm = GroqStreamingLLM(api_key="test-key", model="llama-3.3-70b-versatile")
+    asyncio.run(_collect(llm))
+
+    assert _FakeAsyncOpenAI.last_instance.closed is True
+
+
+def test_groq_streaming_llm_closes_the_client_even_if_the_request_fails(monkeypatch):
+    monkeypatch.setattr("openai.AsyncOpenAI", _FakeAsyncOpenAIRaisingOnCreate)
+
+    llm = GroqStreamingLLM(api_key="test-key", model="llama-3.3-70b-versatile")
+
+    async def _drain():
+        async for _ in llm.stream_response("hi"):
+            pass
+
+    with pytest.raises(RuntimeError, match="provider unavailable"):
+        asyncio.run(_drain())
+
+    assert _FakeAsyncOpenAI.last_instance.closed is True
+
+
 def test_create_llm_from_environment_prefers_groq_and_reads_model_override(monkeypatch):
     monkeypatch.setenv("GROQ_API_KEY", "groq-secret")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "anthropic-secret")
@@ -132,6 +176,16 @@ def test_create_llm_from_environment_falls_back_to_anthropic_without_groq_key(mo
     llm = create_llm_from_environment()
 
     assert isinstance(llm, AnthropicStreamingLLM)
+
+
+def test_create_llm_from_environment_defaults_anthropic_model_when_override_is_blank(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "anthropic-secret")
+    monkeypatch.setenv("PLATT_ANTHROPIC_MODEL", "   ")
+
+    llm = create_llm_from_environment()
+
+    assert isinstance(llm, AnthropicStreamingLLM)
+    assert llm._model == "claude-sonnet-4-6"
 
 
 def test_create_llm_from_environment_returns_unconfigured_without_any_key():

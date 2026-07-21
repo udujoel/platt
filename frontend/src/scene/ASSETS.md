@@ -89,7 +89,7 @@ don't match (`useAnimations` keys `actions` off these exact names).
 
 Copy the final file to:
 
-```
+```text
 frontend/public/platt.glb
 ```
 

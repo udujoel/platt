@@ -13,6 +13,7 @@ from typing import Protocol
 
 
 DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
+DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6"
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 
 PLATT_SYSTEM_PROMPT = (
@@ -44,21 +45,21 @@ class GroqStreamingLLM:
         # Keep this lazy so local UI and contract tests do not require the SDK/network.
         from openai import AsyncOpenAI
 
-        client = AsyncOpenAI(api_key=self._api_key, base_url=GROQ_BASE_URL)
-        stream = await client.chat.completions.create(
-            model=self._model,
-            stream=True,
-            messages=[
-                {"role": "system", "content": system_prompt or PLATT_SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
-            ],
-        )
-        async for chunk in stream:
-            if not chunk.choices:
-                continue
-            text = chunk.choices[0].delta.content
-            if text:
-                yield text
+        async with AsyncOpenAI(api_key=self._api_key, base_url=GROQ_BASE_URL) as client:
+            stream = await client.chat.completions.create(
+                model=self._model,
+                stream=True,
+                messages=[
+                    {"role": "system", "content": system_prompt or PLATT_SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
+            )
+            async for chunk in stream:
+                if not chunk.choices:
+                    continue
+                text = chunk.choices[0].delta.content
+                if text:
+                    yield text
 
 
 class AnthropicStreamingLLM:
@@ -106,7 +107,7 @@ def create_llm_from_environment() -> StreamingLLM:
 
     anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
     if anthropic_api_key:
-        model = os.environ.get("PLATT_ANTHROPIC_MODEL", "claude-sonnet-4-6").strip()
+        model = os.environ.get("PLATT_ANTHROPIC_MODEL", DEFAULT_ANTHROPIC_MODEL).strip() or DEFAULT_ANTHROPIC_MODEL
         return AnthropicStreamingLLM(api_key=anthropic_api_key, model=model)
 
     return UnconfiguredLLM()
