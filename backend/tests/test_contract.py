@@ -105,6 +105,7 @@ def test_persistence_backfills_legacy_events_seq_in_insertion_order(tmp_path) ->
             )
             """
         )
+        connection.execute("create index idx_events_job_id on events (job_id)")
         for event_id, label in ((first_id, "First"), (second_id, "Second"), (third_id, "Third")):
             connection.execute(
                 "insert into events (id, job_id, type, payload, created_at) values (?, ?, ?, ?, ?)",
@@ -120,6 +121,10 @@ def test_persistence_backfills_legacy_events_seq_in_insertion_order(tmp_path) ->
         persistence.record_event(new_event)
         events_after_write = persistence.list_job_events(job_id)
         assert [event["id"] for event in events_after_write][-1] == str(new_event.id)
+
+        inspector = sqlalchemy.inspect(persistence.engine)
+        event_indexes = {index["name"] for index in inspector.get_indexes("events")}
+        assert "idx_events_job_id" in event_indexes
     finally:
         persistence.close()
 

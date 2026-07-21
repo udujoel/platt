@@ -123,6 +123,10 @@ def _backfill_events_seq(connection) -> None:
     """
     if connection.engine.dialect.name == "sqlite":
         connection.execute(text("ALTER TABLE events RENAME TO events_legacy"))
+        # SQLite keeps index names attached to the table through a RENAME, so the
+        # legacy idx_events_job_id index must be dropped before events.create()
+        # recreates it on the new table, or the create fails with "already exists".
+        connection.execute(text("DROP INDEX IF EXISTS idx_events_job_id"))
         events.create(connection)
         connection.execute(
             text(
