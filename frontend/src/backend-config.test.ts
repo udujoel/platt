@@ -12,12 +12,15 @@ describe("resolveBackendConfiguration", () => {
     });
   });
 
-  it("blocks a hosted frontend from silently targeting local defaults", () => {
+  it("defaults a hosted frontend to the same-origin /api backend when no URL is set", () => {
     const configuration = resolveBackendConfiguration({ frontendHostname: "platt.example.com" });
 
-    expect(configuration.isConfigured).toBe(false);
-    expect(configuration.wsUrl).toBeNull();
-    expect(configuration.message).toContain("VITE_API_BASE_URL");
+    expect(configuration).toMatchObject({
+      apiBaseUrl: "https://platt.example.com/api",
+      wsUrl: null,
+      isConfigured: true,
+      message: null,
+    });
   });
 
   it("considers a hosted frontend configured with only VITE_API_BASE_URL, using SSE with no WS URL", () => {
@@ -34,14 +37,18 @@ describe("resolveBackendConfiguration", () => {
     });
   });
 
-  it("blocks a hosted frontend that only sets VITE_WS_URL", () => {
+  it("uses same-origin /api and the explicit WS URL when only VITE_WS_URL is set", () => {
     const configuration = resolveBackendConfiguration({
       frontendHostname: "platt.example.com",
       wsUrl: "wss://api.platt.example.com/ws",
     });
 
-    expect(configuration.isConfigured).toBe(false);
-    expect(configuration.message).toContain("VITE_API_BASE_URL");
+    expect(configuration).toMatchObject({
+      apiBaseUrl: "https://platt.example.com/api",
+      wsUrl: "wss://api.platt.example.com/ws",
+      isConfigured: true,
+      message: null,
+    });
   });
 
   it("accepts an explicitly configured hosted backend with both URLs", () => {

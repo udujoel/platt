@@ -50,11 +50,16 @@ export function resolveBackendConfiguration({
   }
 
   if (!isLocal && !apiBaseUrl) {
+    // On Vercel the backend function is co-deployed at the same origin under
+    // `/api` (see api/index.py + vercel.json), so a hosted build with no
+    // explicit VITE_API_BASE_URL defaults to that same-origin endpoint rather
+    // than showing a configuration-required screen. This is safe: it targets
+    // this deployment's own backend, never a visitor's local machine.
     return {
-      apiBaseUrl: resolvedApiBaseUrl,
+      apiBaseUrl: `https://${frontendHostname}/api`,
       wsUrl: resolvedWsUrl,
-      isConfigured: false,
-      message: "This hosted Platt build needs VITE_API_BASE_URL before it can connect to a backend.",
+      isConfigured: true,
+      message: null,
     };
   }
 
