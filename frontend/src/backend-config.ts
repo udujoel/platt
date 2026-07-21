@@ -1,6 +1,6 @@
 export type BackendConfiguration = {
   apiBaseUrl: string;
-  wsUrl: string;
+  wsUrl: string | null;
   isConfigured: boolean;
   message: string | null;
 };
@@ -31,34 +31,30 @@ export function resolveBackendConfiguration({
   frontendHostname,
   wsUrl,
 }: BackendConfigurationInput): BackendConfiguration {
+  const isLocal = isLocalHostname(frontendHostname);
   const resolvedApiBaseUrl = apiBaseUrl ?? LOCAL_API_BASE_URL;
-  const resolvedWsUrl = wsUrl ?? LOCAL_WS_URL;
-  const endpointsAreValid =
-    hasProtocol(resolvedApiBaseUrl, ["http:", "https:"]) &&
-    hasProtocol(resolvedWsUrl, ["ws:", "wss:"]);
-  const hostedWithoutEndpoints =
-    !isLocalHostname(frontendHostname) && (!apiBaseUrl || !wsUrl);
+  // VITE_WS_URL is optional: hosted builds use SSE by default and only fall
+  // back to a WebSocket transport when a ws(s) URL is explicitly configured.
+  const resolvedWsUrl = wsUrl ?? (isLocal ? LOCAL_WS_URL : null);
 
-  if (!endpointsAreValid) {
+  const apiBaseUrlIsValid = hasProtocol(resolvedApiBaseUrl, ["http:", "https:"]);
+  const wsUrlIsValid = resolvedWsUrl === null || hasProtocol(resolvedWsUrl, ["ws:", "wss:"]);
+
+  if (!apiBaseUrlIsValid || !wsUrlIsValid) {
     return {
       apiBaseUrl: resolvedApiBaseUrl,
       wsUrl: resolvedWsUrl,
       isConfigured: false,
-      message: "Set VITE_API_BASE_URL to an http(s) URL and VITE_WS_URL to a ws(s) URL.",
+      message: "Set VITE_API_BASE_URL to an http(s) URL and, if set, VITE_WS_URL to a ws(s) URL.",
     };
   }
 
-  if (hostedWithoutEndpoints) {
-    const missingVariables = [
-      apiBaseUrl ? null : "VITE_API_BASE_URL",
-      wsUrl ? null : "VITE_WS_URL",
-    ].filter((value): value is string => value !== null);
-
+  if (!isLocal && !apiBaseUrl) {
     return {
       apiBaseUrl: resolvedApiBaseUrl,
       wsUrl: resolvedWsUrl,
       isConfigured: false,
-      message: `This hosted Platt build needs ${missingVariables.join(" and ")} before it can connect to a backend.`,
+      message: "This hosted Platt build needs VITE_API_BASE_URL before it can connect to a backend.",
     };
   }
 
