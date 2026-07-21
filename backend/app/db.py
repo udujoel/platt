@@ -74,7 +74,10 @@ onboarding_records = Table(
     Column("record_json", Text, nullable=False),
 )
 
-# T-C1 will add read/write logic; this PR only lands the schema.
+# Immutable once decided: only status/decided_at/expires_at/consumed_at ever change,
+# and only through the one-time transitions in app.approvals (pending -> decided,
+# then approved -> consumed). job_id/plan_hash/commit_sha/scope are set at creation
+# and never updated, so an approval can only ever authorize the exact apply it named.
 approvals = Table(
     "approvals",
     metadata,
@@ -86,6 +89,8 @@ approvals = Table(
     Column("approver", String, nullable=True),
     Column("status", String, nullable=True),
     Column("created_at", DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP")),
+    Column("decided_at", DateTime, nullable=True),
+    Column("expires_at", DateTime, nullable=True),
     Column("consumed_at", DateTime, nullable=True),
 )
 
@@ -160,3 +165,9 @@ def run_migrations(engine: Engine) -> None:
                 connection.execute(text("ALTER TABLE jobs ADD COLUMN onboarding_id TEXT"))
         if "events" in existing_tables and "seq" not in events_columns:
             _backfill_events_seq(connection)
+        if "approvals" in existing_tables:
+            approvals_columns = {column["name"] for column in inspector.get_columns("approvals")}
+            if "decided_at" not in approvals_columns:
+                connection.execute(text("ALTER TABLE approvals ADD COLUMN decided_at TIMESTAMP"))
+            if "expires_at" not in approvals_columns:
+                connection.execute(text("ALTER TABLE approvals ADD COLUMN expires_at TIMESTAMP"))

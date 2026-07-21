@@ -227,6 +227,132 @@ class Persistence:
             rows = connection.execute(text(query), params).mappings().all()
         return [dict(row) for row in rows]
 
+    def create_approval(
+        self,
+        approval_id: UUID,
+        job_id: UUID,
+        plan_hash: str,
+        commit_sha: str,
+        scope: str,
+    ) -> None:
+        with self._begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    insert into approvals (id, job_id, plan_hash, commit_sha, scope, status)
+                    values (:id, :job_id, :plan_hash, :commit_sha, :scope, 'pending')
+                    """
+                ),
+                {
+                    "id": str(approval_id),
+                    "job_id": str(job_id),
+                    "plan_hash": plan_hash,
+                    "commit_sha": commit_sha,
+                    "scope": scope,
+                },
+            )
+
+    def decide_approval(
+        self,
+        approval_id: UUID,
+        approver: str,
+        status: str,
+        expires_at,
+    ) -> int:
+        """Transition a pending approval to a terminal decision; returns rows affected.
+
+        Only fires when the row is still ``pending``, so a decided approval can never
+        be re-decided by a second, possibly conflicting, call.
+        """
+        with self._begin() as connection:
+            result = connection.execute(
+                text(
+                    """
+                    update approvals
+                    set status = :status, approver = :approver,
+                        decided_at = current_timestamp, expires_at = :expires_at
+                    where id = :id and status = 'pending'
+                    """
+                ),
+                {
+                    "id": str(approval_id),
+                    "approver": approver,
+                    "status": status,
+                    "expires_at": expires_at,
+                },
+            )
+            return result.rowcount
+
+    def consume_approval(self, approval_id: UUID) -> int:
+        """Atomically mark an approved, unexpired approval consumed; returns rows affected.
+
+        The ``where`` clause is the whole safety property: consumed_at only flips from
+        NULL to a timestamp once, so a concurrent double-apply can never both succeed.
+        """
+        with self._begin() as connection:
+            result = connection.execute(
+                text(
+                    """
+                    update approvals
+                    set consumed_at = current_timestamp
+                    where id = :id
+                      and status = 'approved'
+                      and consumed_at is null
+                      and (expires_at is null or expires_at > current_timestamp)
+                    """
+                ),
+                {"id": str(approval_id)},
+            )
+            return result.rowcount
+
+    def get_approval(self, approval_id: UUID) -> dict[str, Any] | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                text(
+                    """
+                    select id, job_id, plan_hash, commit_sha, scope, approver, status,
+                           created_at, decided_at, expires_at, consumed_at
+                    from approvals where id = :id
+                    """
+                ),
+                {"id": str(approval_id)},
+            ).mappings().first()
+        return dict(row) if row else None
+
+    def list_approvals(self, job_id: UUID | None = None) -> list[dict[str, Any]]:
+        query = (
+            "select id, job_id, plan_hash, commit_sha, scope, approver, status, "
+            "created_at, decided_at, expires_at, consumed_at from approvals"
+        )
+        params: dict[str, Any] = {}
+        if job_id:
+            query += " where job_id = :job_id"
+            params["job_id"] = str(job_id)
+        query += " order by created_at desc"
+        with self._connect() as connection:
+            rows = connection.execute(text(query), params).mappings().all()
+        return [dict(row) for row in rows]
+
+    def find_matching_approval(
+        self, job_id: UUID, plan_hash: str, commit_sha: str
+    ) -> dict[str, Any] | None:
+        """Find the most recent approval exactly bound to this job, plan, and commit."""
+        with self._connect() as connection:
+            row = connection.execute(
+                text(
+                    """
+                    select id, job_id, plan_hash, commit_sha, scope, approver, status,
+                           created_at, decided_at, expires_at, consumed_at
+                    from approvals
+                    where job_id = :job_id and plan_hash = :plan_hash and commit_sha = :commit_sha
+                    order by created_at desc
+                    limit 1
+                    """
+                ),
+                {"job_id": str(job_id), "plan_hash": plan_hash, "commit_sha": commit_sha},
+            ).mappings().first()
+        return dict(row) if row else None
+
     def save_onboarding_record(self, record: OnboardingRecord) -> OnboardingRecord:
         with self._begin() as connection:
             connection.execute(
