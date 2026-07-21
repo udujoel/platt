@@ -304,7 +304,7 @@ async def get_pipeline_logs(
         persistence,
         event_bus=event_bus,
         job_id=job_id,
-        action="get_pipeline_logs",
+        action="get_pipeline_log_content",
         request_fields={"pipeline_id": pipeline_id, "run_id": run_id, "log_id": log_id},
         result_summary=lambda r: f"chars={len(r)}",
         fn=lambda: client.get_pipeline_log_content(pipeline_id, run_id, log_id),

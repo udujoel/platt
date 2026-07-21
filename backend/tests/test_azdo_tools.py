@@ -5,7 +5,7 @@ import httpx
 import pytest
 import respx
 
-from app.clients.azdo import AzdoClient, AzdoConfig, AzdoNotConfiguredError
+from app.clients.azdo import AzdoClient, AzdoConfig, AzdoNotConfiguredError, AzdoRequestError
 from app.persistence import Persistence
 from app.tools import azdo as azdo_tools
 
@@ -259,7 +259,7 @@ def test_transport_timeout_still_writes_exactly_one_audit_entry(persistence: Per
                 mock.get("/myorg/MyProject/_apis/git/repositories/repo-1/pullrequests/42").mock(
                     side_effect=httpx.TimeoutException("timed out")
                 )
-                with pytest.raises(Exception):
+                with pytest.raises(AzdoRequestError, match="timed out"):
                     await azdo_tools.get_pr(
                         client, persistence, repository_id="repo-1", pull_request_id=42, job_id=job_id
                     )
@@ -286,7 +286,7 @@ def test_transport_connect_error_still_writes_exactly_one_audit_entry(persistenc
                 mock.post("/myorg/MyProject/_apis/pipelines/9/runs").mock(
                     side_effect=httpx.ConnectError("connection refused")
                 )
-                with pytest.raises(Exception):
+                with pytest.raises(AzdoRequestError, match="connection refused"):
                     await azdo_tools.run_pipeline(client, persistence, pipeline_id=9, job_id=job_id)
         finally:
             await client.aclose()
@@ -326,5 +326,58 @@ def test_update_wiki_page_tool_audits_success_via_refactored_client_call(persist
         assert len(entries) == 1
         assert entries[0]["action"] == "update_wiki_page"
         assert entries[0]["outcome"].startswith("succeeded")
+
+    asyncio.run(_run())
+
+
+def test_get_pipeline_logs_lists_metadata_with_matching_audit_action(persistence: Persistence) -> None:
+    async def _run() -> None:
+        client = make_client()
+        job_id = uuid4()
+        try:
+            with respx.mock(base_url="https://dev.azure.com") as mock:
+                mock.get("/myorg/MyProject/_apis/pipelines/9/runs/100/logs").mock(
+                    return_value=httpx.Response(200, json={"logs": [{"id": 1}, {"id": 2}]})
+                )
+                result = await azdo_tools.get_pipeline_logs(
+                    client, persistence, pipeline_id=9, run_id=100, job_id=job_id
+                )
+                assert len(result["logs"]) == 2
+        finally:
+            await client.aclose()
+
+        entries = persistence.list_audit_entries(job_id)
+        assert len(entries) == 1
+        assert entries[0]["action"] == "get_pipeline_logs"
+
+    asyncio.run(_run())
+
+
+def test_get_pipeline_logs_with_log_id_fetches_content_with_distinct_audit_action(
+    persistence: Persistence,
+) -> None:
+    """The single-log-content path is a distinct operation from listing logs, so it must
+    be invocable (no crash) and must not be conflated with the listing action in the
+    audit trail."""
+
+    async def _run() -> None:
+        client = make_client()
+        job_id = uuid4()
+        try:
+            with respx.mock(base_url="https://dev.azure.com") as mock:
+                mock.get("/myorg/MyProject/_apis/pipelines/9/runs/100/logs/3").mock(
+                    return_value=httpx.Response(200, text="log line one\n")
+                )
+                result = await azdo_tools.get_pipeline_logs(
+                    client, persistence, pipeline_id=9, run_id=100, log_id=3, job_id=job_id
+                )
+                assert result == "log line one\n"
+        finally:
+            await client.aclose()
+
+        entries = persistence.list_audit_entries(job_id)
+        assert len(entries) == 1
+        assert entries[0]["action"] == "get_pipeline_log_content"
+        assert entries[0]["action"] != "get_pipeline_logs"
 
     asyncio.run(_run())
