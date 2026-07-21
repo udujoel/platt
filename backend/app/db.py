@@ -113,13 +113,46 @@ def create_engine_for(database_url: str) -> Engine:
     return create_engine(database_url, future=True, connect_args=connect_args)
 
 
+def _backfill_events_seq(connection) -> None:
+    """Add ``events.seq`` to a pre-this-PR table and populate it in insertion order.
+
+    SQLite can't retrofit a new autoincrementing primary key onto an existing
+    table with ``ALTER TABLE``, so the table is rebuilt: renamed aside, recreated
+    from the current (post-migration) schema, and repopulated ordered by the
+    original rowid, which preserves the same insertion order ``seq`` now encodes.
+    """
+    if connection.engine.dialect.name == "sqlite":
+        connection.execute(text("ALTER TABLE events RENAME TO events_legacy"))
+        events.create(connection)
+        connection.execute(
+            text(
+                """
+                INSERT INTO events (id, job_id, type, payload, created_at)
+                SELECT id, job_id, type, payload, created_at FROM events_legacy ORDER BY rowid
+                """
+            )
+        )
+        connection.execute(text("DROP TABLE events_legacy"))
+    else:
+        # No pre-this-PR Postgres deployment can exist yet, but add the column
+        # defensively so a hand-migrated legacy table doesn't hard-fail startup.
+        connection.execute(text("ALTER TABLE events ADD COLUMN seq BIGSERIAL"))
+
+
 def run_migrations(engine: Engine) -> None:
     """Create any missing tables/indexes and upgrade a pre-existing legacy SQLite file."""
     with engine.begin() as connection:
         inspector = inspect(connection)
         existing_tables = set(inspector.get_table_names())
+        events_columns = (
+            {column["name"] for column in inspector.get_columns("events")}
+            if "events" in existing_tables
+            else set()
+        )
         metadata.create_all(connection, checkfirst=True)
         if "jobs" in existing_tables:
             job_columns = {column["name"] for column in inspector.get_columns("jobs")}
             if "onboarding_id" not in job_columns:
                 connection.execute(text("ALTER TABLE jobs ADD COLUMN onboarding_id TEXT"))
+        if "events" in existing_tables and "seq" not in events_columns:
+            _backfill_events_seq(connection)

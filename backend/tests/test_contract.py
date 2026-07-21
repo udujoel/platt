@@ -88,6 +88,42 @@ def test_persistence_migrates_legacy_jobs_for_onboarding_binding(tmp_path) -> No
         persistence.close()
 
 
+def test_persistence_backfills_legacy_events_seq_in_insertion_order(tmp_path) -> None:
+    db_path = tmp_path / "legacy-events.sqlite3"
+    job_id = uuid4()
+    first_id, second_id, third_id = str(uuid4()), str(uuid4()), str(uuid4())
+    same_timestamp = "2026-07-18T01:00:00+00:00"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            create table events (
+                id text primary key,
+                job_id text,
+                type text not null,
+                payload text not null,
+                created_at text not null
+            )
+            """
+        )
+        for event_id, label in ((first_id, "First"), (second_id, "Second"), (third_id, "Third")):
+            connection.execute(
+                "insert into events (id, job_id, type, payload, created_at) values (?, ?, ?, ?, ?)",
+                (event_id, str(job_id), "agent_state", json.dumps({"label": label}), same_timestamp),
+            )
+
+    persistence = Persistence(db_path)
+    try:
+        events = persistence.list_job_events(job_id)
+        assert [event["id"] for event in events] == [first_id, second_id, third_id]
+
+        new_event = AgentStateEvent(job_id=job_id, state=PlattState.WORKING, label="Fourth")
+        persistence.record_event(new_event)
+        events_after_write = persistence.list_job_events(job_id)
+        assert [event["id"] for event in events_after_write][-1] == str(new_event.id)
+    finally:
+        persistence.close()
+
+
 def test_audit_preflight_allows_local_vite_preview(client: TestClient) -> None:
     response = client.options(
         "/audit",

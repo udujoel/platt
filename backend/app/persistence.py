@@ -1,4 +1,5 @@
 import json
+from contextlib import contextmanager
 from pathlib import Path
 from threading import Lock
 from typing import Any
@@ -19,6 +20,10 @@ class Persistence:
     Methods stay synchronous: ``app.event_bus`` invokes its recorder callback without
     awaiting it, so this class cannot expose an async surface without silently
     dropping event writes.
+
+    A single file-backed SQLite connection cannot serve concurrent writers safely,
+    so calls are serialized with a lock only for that backend; Postgres relies on
+    SQLAlchemy's pooled connections instead, so the lock would only add contention.
     """
 
     def __init__(
@@ -28,32 +33,45 @@ class Persistence:
     ) -> None:
         self.database_url = resolve_database_url(db_path, database_url)
         self.engine: Engine = create_engine_for(self.database_url)
+        self._serialize = self.database_url.startswith("sqlite")
         self._lock = Lock()
         self._closed = False
         self.init_schema()
 
     def init_schema(self) -> None:
-        with self._lock:
+        with self._serialized():
             run_migrations(self.engine)
 
     def close(self) -> None:
-        with self._lock:
+        with self._serialized():
             self._closed = True
             self.engine.dispose()
 
+    @contextmanager
+    def _serialized(self):
+        if self._serialize:
+            with self._lock:
+                yield
+        else:
+            yield
+
+    @contextmanager
     def _connect(self):
         if self._closed:
             raise RuntimeError("Cannot operate on a closed database")
-        return self.engine.connect()
+        with self._serialized(), self.engine.connect() as connection:
+            yield connection
 
+    @contextmanager
     def _begin(self):
         if self._closed:
             raise RuntimeError("Cannot operate on a closed database")
-        return self.engine.begin()
+        with self._serialized(), self.engine.begin() as connection:
+            yield connection
 
     def check_ready(self) -> None:
         """Verify that the current process can read from its configured database."""
-        with self._lock, self._connect() as connection:
+        with self._connect() as connection:
             connection.execute(text("select 1"))
 
     def record_job(
@@ -63,7 +81,7 @@ class Persistence:
         status: str = "accepted",
         onboarding_id: UUID | None = None,
     ) -> None:
-        with self._lock, self._begin() as connection:
+        with self._begin() as connection:
             connection.execute(
                 text(
                     """
@@ -85,7 +103,7 @@ class Persistence:
             )
 
     def update_job_status(self, job_id: UUID, status: str) -> None:
-        with self._lock, self._begin() as connection:
+        with self._begin() as connection:
             connection.execute(
                 text("update jobs set status = :status, updated_at = current_timestamp where id = :id"),
                 {"status": status, "id": str(job_id)},
@@ -94,7 +112,7 @@ class Persistence:
     def record_event(self, event: Event) -> None:
         payload = event.model_dump_json()
         job_id = getattr(event, "job_id", None)
-        with self._lock, self._begin() as connection:
+        with self._begin() as connection:
             connection.execute(
                 text(
                     """
@@ -117,7 +135,7 @@ class Persistence:
             )
 
     def record_audit_entry(self, job_id: UUID | None, tool: str, action: str, outcome: str) -> None:
-        with self._lock, self._begin() as connection:
+        with self._begin() as connection:
             connection.execute(
                 text(
                     """
@@ -134,7 +152,7 @@ class Persistence:
             )
 
     def get_job(self, job_id: UUID) -> dict[str, Any] | None:
-        with self._lock, self._connect() as connection:
+        with self._connect() as connection:
             row = connection.execute(
                 text(
                     "select id, prompt, status, onboarding_id, created_at, updated_at from jobs where id = :id"
@@ -144,7 +162,7 @@ class Persistence:
         return dict(row) if row else None
 
     def list_job_events(self, job_id: UUID) -> list[dict[str, Any]]:
-        with self._lock, self._connect() as connection:
+        with self._connect() as connection:
             rows = connection.execute(
                 text(
                     """
@@ -160,7 +178,7 @@ class Persistence:
 
     def list_recent_events(self, limit: int) -> list[dict[str, Any]]:
         """Return a bounded replay window in stable publication order."""
-        with self._lock, self._connect() as connection:
+        with self._connect() as connection:
             rows = connection.execute(
                 text(
                     """
@@ -181,12 +199,12 @@ class Persistence:
             query += " where job_id = :job_id"
             params["job_id"] = str(job_id)
         query += " order by created_at desc"
-        with self._lock, self._connect() as connection:
+        with self._connect() as connection:
             rows = connection.execute(text(query), params).mappings().all()
         return [dict(row) for row in rows]
 
     def save_onboarding_record(self, record: OnboardingRecord) -> OnboardingRecord:
-        with self._lock, self._begin() as connection:
+        with self._begin() as connection:
             connection.execute(
                 text(
                     """
@@ -204,7 +222,7 @@ class Persistence:
         return record
 
     def get_onboarding_record(self, onboarding_id: UUID) -> OnboardingRecord:
-        with self._lock, self._connect() as connection:
+        with self._connect() as connection:
             row = connection.execute(
                 text("select record_json from onboarding_records where id = :id"),
                 {"id": str(onboarding_id)},

@@ -41,7 +41,7 @@ REPOSITORY_REVIEW_PLAN_PROMPT = "Prepare a read-only repository review plan."
 def _persistence(request: Request) -> Persistence:
     persistence = getattr(request.app.state, "persistence", None)
     if not isinstance(persistence, Persistence):
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="audit persistence is unavailable")
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="persistence is unavailable")
     return persistence
 
 
