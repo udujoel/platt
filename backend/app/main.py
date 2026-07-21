@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.background_tasks import cancel_background_tasks
 from app.event_bus import event_bus
 from app.persistence import Persistence
-from app.routers import audit, chat, dev, events, health, jobs, onboarding, sse, ws
+from app.routers import approvals, audit, chat, dev, events, health, jobs, onboarding, sse, ws
 
 
 LOCAL_VITE_ORIGIN_REGEX = r"^http://(?:localhost|127\.0\.0\.1):517\d+$"
@@ -81,6 +81,7 @@ def create_app(
     app.include_router(sse.router)
     app.include_router(audit.router)
     app.include_router(onboarding.router)
+    app.include_router(approvals.router)
     app.include_router(ws.router)
     return app
 

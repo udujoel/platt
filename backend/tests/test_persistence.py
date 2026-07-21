@@ -80,7 +80,7 @@ def test_persistence_get_onboarding_record_raises_when_missing(persistence: Pers
         persistence.get_onboarding_record(uuid4())
 
 
-def test_persistence_creates_approvals_table_schema_stub(persistence: Persistence) -> None:
+def test_persistence_creates_approvals_table_schema(persistence: Persistence) -> None:
     inspector = sqlalchemy.inspect(persistence.engine)
 
     columns = {column["name"] for column in inspector.get_columns("approvals")}
@@ -94,6 +94,8 @@ def test_persistence_creates_approvals_table_schema_stub(persistence: Persistenc
         "approver",
         "status",
         "created_at",
+        "decided_at",
+        "expires_at",
         "consumed_at",
     }
 
