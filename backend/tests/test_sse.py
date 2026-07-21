@@ -99,6 +99,38 @@ def test_sse_stream_filters_backfill_by_job_id(client: TestClient, monkeypatch: 
     assert json.loads(frames[0]["data"])["label"] == "Wanted"
 
 
+def test_sse_stream_backfill_respects_wall_clock_cap(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A large backfill must stop at the deadline too, not only the live loop."""
+    monkeypatch.setenv("PLATT_SSE_MAX_SECONDS", "10")
+    persistence = client.app.state.persistence
+    job_id = uuid4()
+    created_at = datetime(2026, 7, 18, 1, 0, tzinfo=timezone.utc)
+    total_events = 20
+    for index in range(total_events):
+        persistence.record_event(
+            AgentStateEvent(job_id=job_id, state=PlattState.THINKING, label=f"Event {index}", created_at=created_at)
+        )
+
+    # Fake only this module's clock indirection (not the stdlib `time` module,
+    # which asyncio's own scheduling relies on): the deadline is established on
+    # the first call, then the clock jumps far past it after two backfill rows
+    # have been checked, so the stream must stop mid-backfill.
+    calls = {"count": 0}
+
+    def fake_now() -> float:
+        calls["count"] += 1
+        return 0.0 if calls["count"] <= 3 else 1_000.0
+
+    monkeypatch.setattr("app.routers.sse._now", fake_now)
+
+    with client.stream("GET", "/events/stream", params={"job_id": str(job_id)}) as response:
+        assert response.status_code == 200
+        body = "".join(response.iter_text())
+
+    frames = _parse_sse_frames(body)
+    assert 0 < len(frames) < total_events
+
+
 def test_sse_stream_closes_after_wall_clock_cap(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PLATT_SSE_MAX_SECONDS", "0.2")
 

@@ -40,25 +40,34 @@ def _format_sse(seq: int, event_type: str, payload: str) -> str:
     return f"id: {seq}\nevent: {event_type}\ndata: {payload}\n\n"
 
 
+def _now() -> float:
+    """Indirection so tests can fake the clock without patching stdlib ``time``, which asyncio's own scheduling relies on."""
+    return time.monotonic()
+
+
 async def _stream_events(request: Request, last_seq: int, job_id: UUID | None) -> AsyncIterator[str]:
     persistence = request.app.state.persistence
     max_seconds = _resolve_positive_float(SSE_MAX_SECONDS_ENV, DEFAULT_SSE_MAX_SECONDS)
     keepalive_seconds = _resolve_positive_float(SSE_KEEPALIVE_SECONDS_ENV, DEFAULT_SSE_KEEPALIVE_SECONDS)
-    deadline = time.monotonic() + max_seconds
+    deadline = _now() + max_seconds
 
     subscription = event_bus.subscribe()
     pending_next: asyncio.Task | None = None
     try:
         backfill = await asyncio.to_thread(persistence.list_events_since, last_seq, job_id)
         for row in backfill:
+            if _now() >= deadline:
+                # A large backfill can outrun the cap; stop here and let the
+                # client reconnect with the last delivered Last-Event-ID.
+                return
             if await request.is_disconnected():
                 return
             yield _format_sse(row["seq"], row["type"], row["payload"])
             last_seq = row["seq"]
 
-        next_keepalive = time.monotonic() + keepalive_seconds
+        next_keepalive = _now() + keepalive_seconds
         while True:
-            now = time.monotonic()
+            now = _now()
             remaining = deadline - now
             if remaining <= 0:
                 return
@@ -72,9 +81,9 @@ async def _stream_events(request: Request, last_seq: int, job_id: UUID | None) -
             done, _pending = await asyncio.wait({pending_next}, timeout=wait_timeout)
 
             if pending_next not in done:
-                if time.monotonic() >= next_keepalive:
+                if _now() >= next_keepalive:
                     yield ": keep-alive\n\n"
-                    next_keepalive = time.monotonic() + keepalive_seconds
+                    next_keepalive = _now() + keepalive_seconds
                 continue
 
             resolved_task, pending_next = pending_next, None
