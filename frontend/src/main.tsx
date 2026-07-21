@@ -5,13 +5,15 @@ import { create } from "zustand";
 import "./styles.css";
 import { resolveBackendConfiguration } from "./backend-config";
 import type { BackendConfiguration } from "./backend-config";
-import { ReconnectPolicy } from "./reconnect-policy";
 import { createBackendReadinessPoller } from "./readiness-status";
 import type { BackendReadiness } from "./readiness-status";
 import { describePersistedEvent } from "./job-event-description";
 import type { PersistedJobEvent } from "./job-event-description";
 import { selectStageRenderer } from "./stage-renderer";
 import type { StageRenderer } from "./stage-renderer";
+import { parseBackendEvent } from "./backend-events";
+import type { BackendEvent, PlattState } from "./backend-events";
+import { createSseClient } from "./sse-client";
 
 const ThreeOfficeScene = React.lazy(() => import("./scene/ThreeOfficeScene").then(({ ThreeOfficeScene: Scene }) => ({ default: Scene })));
 
@@ -33,16 +35,6 @@ class ThreeOfficeSceneBoundary extends React.Component<
     return this.state.failed ? this.props.fallback : this.props.children;
   }
 }
-
-type PlattState =
-  | "idle"
-  | "listening"
-  | "thinking"
-  | "working"
-  | "talking"
-  | "awaiting_approval"
-  | "celebrating"
-  | "concerned";
 
 type ConnectionState = "connecting" | "connected" | "disconnected";
 
@@ -74,28 +66,6 @@ function useStageRenderer(): [StageRenderer, () => void] {
 
   return [renderer, useFallback];
 }
-
-type EventBase = {
-  id: string;
-  created_at: string;
-};
-
-type JobEvent = EventBase & {
-  job_id?: string;
-};
-
-type BackendEvent =
-  | (JobEvent & { type: "agent_state"; job_id: string; state: PlattState; label: string })
-  | (JobEvent & { type: "chat_delta"; job_id: string; delta: string; index: number; done: boolean })
-  | (JobEvent & { type: "job_created"; job_id: string; prompt: string })
-  | (JobEvent & { type: "work_item_moved"; job_id: string; work_item_id: string; title: string; from_state: string; to_state: string })
-  | (JobEvent & { type: "pipeline_update"; job_id: string; pipeline_name: string; status: string; url?: string | null })
-  | (JobEvent & { type: "plan_ready"; job_id: string; summary: string; has_blocking_changes: boolean })
-  | (JobEvent & { type: "approval_required"; job_id: string; approval_id: string; summary: string })
-  | (JobEvent & { type: "approval_result"; job_id: string; approval_id: string; approved: boolean })
-  | (JobEvent & { type: "apply_result"; job_id: string; success: boolean; summary: string })
-  | (JobEvent & { type: "audit_entry"; job_id: string; tool: string; action: string; outcome: string; step_id?: string | null; summary?: string | null })
-  | (EventBase & { type: "dashboard_refresh"; metrics: Record<string, string | number> });
 
 type EventEntry = {
   id: string;
@@ -195,7 +165,7 @@ const backendConfiguration = resolveBackendConfiguration({
   frontendHostname: window.location.hostname,
   wsUrl: import.meta.env.VITE_WS_URL,
 });
-const { apiBaseUrl, wsUrl } = backendConfiguration;
+const { apiBaseUrl } = backendConfiguration;
 
 const stateLabels: Record<PlattState, string> = {
   idle: "Idle",
@@ -210,60 +180,9 @@ const stateLabels: Record<PlattState, string> = {
 
 const createId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const formatTime = (value?: string) => (value ? new Date(value).toLocaleTimeString() : new Date().toLocaleTimeString());
-const plattStates = new Set<PlattState>(["idle", "listening", "thinking", "working", "talking", "awaiting_approval", "celebrating", "concerned"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function hasString(record: Record<string, unknown>, key: string): boolean {
-  return typeof record[key] === "string";
-}
-
-function hasJobId(record: Record<string, unknown>): boolean {
-  return hasString(record, "job_id");
-}
-
-function parseBackendEvent(value: unknown): BackendEvent | null {
-  if (!isRecord(value) || !hasString(value, "id") || !hasString(value, "created_at") || !hasString(value, "type")) return null;
-
-  switch (value.type) {
-    case "agent_state":
-      return hasJobId(value) && hasString(value, "label") && typeof value.state === "string" && plattStates.has(value.state as PlattState)
-        ? (value as BackendEvent)
-        : null;
-    case "chat_delta":
-      return hasJobId(value) && hasString(value, "delta") && Number.isInteger(value.index) && (value.index as number) >= 0 && typeof value.done === "boolean"
-        ? (value as BackendEvent)
-        : null;
-    case "job_created":
-      return hasJobId(value) && hasString(value, "prompt") ? (value as BackendEvent) : null;
-    case "work_item_moved":
-      return hasJobId(value) && ["work_item_id", "title", "from_state", "to_state"].every((key) => hasString(value, key)) ? (value as BackendEvent) : null;
-    case "pipeline_update":
-      return hasJobId(value) && hasString(value, "pipeline_name") && hasString(value, "status") && (value.url === undefined || value.url === null || typeof value.url === "string")
-        ? (value as BackendEvent)
-        : null;
-    case "plan_ready":
-      return hasJobId(value) && hasString(value, "summary") && typeof value.has_blocking_changes === "boolean" ? (value as BackendEvent) : null;
-    case "approval_required":
-      return hasJobId(value) && hasString(value, "approval_id") && hasString(value, "summary") ? (value as BackendEvent) : null;
-    case "approval_result":
-      return hasJobId(value) && hasString(value, "approval_id") && typeof value.approved === "boolean" ? (value as BackendEvent) : null;
-    case "apply_result":
-      return hasJobId(value) && typeof value.success === "boolean" && hasString(value, "summary") ? (value as BackendEvent) : null;
-    case "audit_entry":
-      return hasJobId(value)
-        && ["tool", "action", "outcome"].every((key) => hasString(value, key))
-        && (value.step_id === undefined || value.step_id === null || typeof value.step_id === "string")
-        && (value.summary === undefined || value.summary === null || typeof value.summary === "string")
-        ? (value as BackendEvent)
-        : null;
-    case "dashboard_refresh":
-      return isRecord(value.metrics) && Object.values(value.metrics).every((metric) => typeof metric === "string" || typeof metric === "number") ? (value as BackendEvent) : null;
-    default:
-      return null;
-  }
 }
 
 const useEventStore = create<EventStore>((set) => ({
@@ -291,7 +210,7 @@ const useEventStore = create<EventStore>((set) => ({
       events: [
         {
           id: createId(),
-          label: connection === "connected" ? "WebSocket connected" : `WebSocket ${connection}`,
+          label: connection === "connected" ? "Live stream connected" : `Live stream ${connection}`,
           timestamp: formatTime(),
           state: current.state,
         },
@@ -388,14 +307,6 @@ function useBackendEvents() {
 
   React.useEffect(() => {
     let closed = false;
-    let socket: WebSocket | null = null;
-    let retryTimer: number | undefined;
-    let stabilityTimer: number | undefined;
-    const retryPolicy = new ReconnectPolicy();
-    let hasConnected = false;
-    let recovering = false;
-    let recoveryVersion = 0;
-    let queuedEvents: BackendEvent[] = [];
 
     const deliver = (event: BackendEvent) => {
       const store = useEventStore.getState();
@@ -404,101 +315,39 @@ function useBackendEvents() {
       setLastEvent(event);
     };
 
-    const markConnectionStable = () => {
-      retryPolicy.reset();
-      window.clearTimeout(stabilityTimer);
-      stabilityTimer = undefined;
-    };
-
-    const hydrateAfterReconnect = async () => {
-      const activeRecovery = ++recoveryVersion;
-      recovering = true;
-      const recoveredEvents: BackendEvent[] = [];
-      const recoveryController = new AbortController();
-      const recoveryTimer = window.setTimeout(() => recoveryController.abort(), 5_000);
+    // The SSE stream only replays events after the seq carried in a resumed
+    // connection's Last-Event-ID, so hydrate history once up front here.
+    const hydrateOnMount = async () => {
+      const controller = new AbortController();
+      const timer = window.setTimeout(() => controller.abort(), 5_000);
       try {
         const response = await requestJson<{ events: unknown[] }>("/events/recent?limit=100", {
-          signal: recoveryController.signal,
+          signal: controller.signal,
         });
         for (const value of response.events) {
           const event = parseBackendEvent(value);
-          if (event) recoveredEvents.push(event);
+          if (event && !closed) deliver(event);
         }
       } catch {
-        if (!closed && activeRecovery === recoveryVersion) {
-          useEventStore.getState().addLocalEvent("concerned", "Could not recover persisted events after reconnect");
-        }
+        if (!closed) useEventStore.getState().addLocalEvent("concerned", "Could not recover persisted events on load");
       } finally {
-        window.clearTimeout(recoveryTimer);
-        if (!closed && activeRecovery === recoveryVersion) {
-          recoveredEvents.forEach(deliver);
-          recovering = false;
-          const pendingEvents = queuedEvents;
-          queuedEvents = [];
-          pendingEvents.forEach(deliver);
-        }
+        window.clearTimeout(timer);
       }
     };
 
-    const scheduleReconnect = () => {
-      if (closed || retryTimer !== undefined) return;
-      const delay = retryPolicy.nextDelayMs();
-      retryTimer = window.setTimeout(() => {
-        retryTimer = undefined;
-        connect();
-      }, delay);
-    };
+    void hydrateOnMount();
 
-    const connect = () => {
-      useEventStore.getState().setConnection("connecting");
-      const nextSocket = new WebSocket(wsUrl);
-      socket = nextSocket;
-
-      nextSocket.addEventListener("open", () => {
-        useEventStore.getState().setConnection("connected");
-        window.clearTimeout(stabilityTimer);
-        stabilityTimer = window.setTimeout(markConnectionStable, 5_000);
-        if (hasConnected) void hydrateAfterReconnect();
-        hasConnected = true;
-      });
-
-      nextSocket.addEventListener("message", (message) => {
-        try {
-          const event = parseBackendEvent(JSON.parse(message.data) as unknown);
-          if (!event) {
-            useEventStore.getState().addLocalEvent("concerned", "Received an unsupported backend event");
-            return;
-          }
-          markConnectionStable();
-          if (recovering) queuedEvents.push(event);
-          else deliver(event);
-        } catch {
-          useEventStore.getState().addLocalEvent("concerned", "Received an unreadable backend event");
-        }
-      });
-
-      nextSocket.addEventListener("close", () => {
-        if (socket === nextSocket) socket = null;
-        window.clearTimeout(stabilityTimer);
-        stabilityTimer = undefined;
-        if (closed) return;
-        useEventStore.getState().setConnection("disconnected");
-        scheduleReconnect();
-      });
-
-      nextSocket.addEventListener("error", () => {
-        nextSocket.close();
-      });
-    };
-
-    connect();
+    const client = createSseClient({
+      streamUrl: () => `${apiBaseUrl}/events/stream`,
+      onEvent: deliver,
+      onConnectionChange: (connection) => useEventStore.getState().setConnection(connection),
+      onUnparsableFrame: () => useEventStore.getState().addLocalEvent("concerned", "Received an unsupported backend event"),
+    });
+    client.start();
 
     return () => {
       closed = true;
-      recoveryVersion += 1;
-      window.clearTimeout(retryTimer);
-      window.clearTimeout(stabilityTimer);
-      socket?.close();
+      client.close();
     };
   }, []);
 
