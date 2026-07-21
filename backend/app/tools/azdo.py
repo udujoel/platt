@@ -71,6 +71,9 @@ async def _call(
     try:
         result = await fn()
     except AzdoError as exc:
+        # AzdoClient wraps every failure mode (non-2xx responses AND transport
+        # failures like timeouts/connection errors) in AzdoError, so this one
+        # except clause is enough to guarantee exactly one audit entry per call.
         await _audit(
             persistence,
             event_bus,

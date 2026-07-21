@@ -249,3 +249,114 @@ def test_request_error_carries_status_and_never_includes_pat_and_no_body_swallow
             await client.aclose()
 
     asyncio.run(_run())
+
+
+def test_transport_timeout_is_wrapped_in_azdo_request_error() -> None:
+    async def _run() -> None:
+        client = make_client()
+        try:
+            with respx.mock(base_url="https://dev.azure.com") as mock:
+                mock.get("/myorg/MyProject/_apis/git/repositories/repo-1/pullrequests/1").mock(
+                    side_effect=httpx.TimeoutException("timed out")
+                )
+                with pytest.raises(AzdoRequestError) as excinfo:
+                    await client.get_pull_request("repo-1", 1)
+                assert excinfo.value.status_code is None
+                assert "timed out" in str(excinfo.value)
+                assert "secret-pat" not in str(excinfo.value)
+        finally:
+            await client.aclose()
+
+    asyncio.run(_run())
+
+
+def test_transport_connect_error_is_wrapped_in_azdo_request_error() -> None:
+    async def _run() -> None:
+        client = make_client()
+        try:
+            with respx.mock(base_url="https://dev.azure.com") as mock:
+                mock.get("/myorg/MyProject/_apis/git/repositories/repo-1/pullrequests/1").mock(
+                    side_effect=httpx.ConnectError("connection refused")
+                )
+                with pytest.raises(AzdoRequestError) as excinfo:
+                    await client.get_pull_request("repo-1", 1)
+                assert excinfo.value.status_code is None
+                assert "connection refused" in str(excinfo.value)
+        finally:
+            await client.aclose()
+
+    asyncio.run(_run())
+
+
+def test_get_pipeline_log_content_requests_plain_text_accept_header() -> None:
+    async def _run() -> None:
+        client = make_client()
+        try:
+            with respx.mock(base_url="https://dev.azure.com") as mock:
+                route = mock.get("/myorg/MyProject/_apis/pipelines/9/runs/100/logs/3").mock(
+                    return_value=httpx.Response(200, text="line one\nline two\n")
+                )
+                content = await client.get_pipeline_log_content(9, 100, 3)
+                assert content == "line one\nline two\n"
+                request = route.calls.last.request
+                assert request.headers["Accept"] == "text/plain"
+        finally:
+            await client.aclose()
+
+    asyncio.run(_run())
+
+
+def test_update_wiki_page_without_version_omits_if_match_header() -> None:
+    async def _run() -> None:
+        client = make_client()
+        try:
+            with respx.mock(base_url="https://dev.azure.com") as mock:
+                route = mock.put("/myorg/MyProject/_apis/wiki/wikis/main-wiki/pages").mock(
+                    return_value=httpx.Response(200, json={"id": 3})
+                )
+                result = await client.update_wiki_page("main-wiki", "/Home", content="new page")
+                assert result["id"] == 3
+                request = route.calls.last.request
+                assert "If-Match" not in request.headers
+                assert request.url.params["path"] == "/Home"
+                assert request.url.params["api-version"] == "7.1"
+        finally:
+            await client.aclose()
+
+    asyncio.run(_run())
+
+
+def test_update_wiki_page_raises_azdo_request_error_on_conflict() -> None:
+    async def _run() -> None:
+        client = make_client()
+        try:
+            with respx.mock(base_url="https://dev.azure.com") as mock:
+                mock.put("/myorg/MyProject/_apis/wiki/wikis/main-wiki/pages").mock(
+                    return_value=httpx.Response(409, text="TF401190: version conflict")
+                )
+                with pytest.raises(AzdoRequestError) as excinfo:
+                    await client.update_wiki_page(
+                        "main-wiki", "/Home", content="new page", version='"stale-etag"'
+                    )
+                assert excinfo.value.status_code == 409
+        finally:
+            await client.aclose()
+
+    asyncio.run(_run())
+
+
+def test_update_wiki_page_transport_error_is_wrapped() -> None:
+    async def _run() -> None:
+        client = make_client()
+        try:
+            with respx.mock(base_url="https://dev.azure.com") as mock:
+                mock.put("/myorg/MyProject/_apis/wiki/wikis/main-wiki/pages").mock(
+                    side_effect=httpx.ConnectError("connection refused")
+                )
+                with pytest.raises(AzdoRequestError) as excinfo:
+                    await client.update_wiki_page("main-wiki", "/Home", content="new page")
+                assert excinfo.value.status_code is None
+        finally:
+            await client.aclose()
+
+    asyncio.run(_run())

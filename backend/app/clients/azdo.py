@@ -30,14 +30,25 @@ class AzdoNotConfiguredError(AzdoError):
 
 
 class AzdoRequestError(AzdoError):
-    """Raised when Azure DevOps responds with a non-2xx status."""
+    """Raised when a request to Azure DevOps fails.
 
-    def __init__(self, method: str, url: str, status_code: int, detail: str) -> None:
+    Covers both HTTP-level failures (non-2xx responses, ``status_code`` set)
+    and transport-level failures (timeouts, connection errors, DNS failures,
+    ...) where no response was ever received and ``status_code`` is ``None``.
+    Either way this is the one error type tool callers need to catch to
+    guarantee an audit entry gets written for a failed call.
+    """
+
+    def __init__(self, method: str, url: str, status_code: int | None, detail: str) -> None:
         self.method = method
         self.url = url
         self.status_code = status_code
         self.detail = detail
-        super().__init__(f"{method} {url} failed with {status_code}: {detail}")
+        if status_code is None:
+            message = f"{method} {url} failed: {detail}"
+        else:
+            message = f"{method} {url} failed with {status_code}: {detail}"
+        super().__init__(message)
 
 
 @dataclass(frozen=True)
@@ -99,13 +110,23 @@ class AzdoClient:
         params: dict[str, Any] | None = None,
         json_body: Any = None,
         content_type: str = "application/json",
+        extra_headers: dict[str, str] | None = None,
         raw_response: bool = False,
     ) -> Any:
         merged_params = {**(params or {}), "api-version": API_VERSION}
         headers = {"Content-Type": content_type}
-        response = await self._client.request(
-            method, url, params=merged_params, json=json_body, headers=headers
-        )
+        if extra_headers:
+            headers.update(extra_headers)
+        try:
+            response = await self._client.request(
+                method, url, params=merged_params, json=json_body, headers=headers
+            )
+        except httpx.HTTPError as exc:
+            # Transport-level failures (timeouts, connection errors, ...) never
+            # produce a response, so they must be wrapped here rather than left
+            # to escape as a bare httpx exception: tool callers only catch
+            # AzdoError to guarantee an audit entry for every failed call.
+            raise AzdoRequestError(method, url, None, str(exc)) from exc
         if response.status_code >= 400:
             raise AzdoRequestError(method, str(response.url), response.status_code, response.text[:500])
         if raw_response:
@@ -178,8 +199,17 @@ class AzdoClient:
         return await self._request("GET", url)
 
     async def get_pipeline_log_content(self, pipeline_id: int, run_id: int, log_id: int) -> str:
+        """Fetch one log's raw text.
+
+        The Get Log endpoint returns a JSON envelope (``{"lineCount": ..., "value":
+        [...]}``) by default; sending ``Accept: text/plain`` instead makes it
+        return the log body as plain text, which is what callers of this method
+        want. ``Content-Type`` is irrelevant here since a GET has no request body.
+        """
         url = f"pipelines/{pipeline_id}/runs/{run_id}/logs/{log_id}"
-        response = await self._request("GET", url, content_type="text/plain", raw_response=True)
+        response = await self._request(
+            "GET", url, extra_headers={"Accept": "text/plain"}, raw_response=True
+        )
         return response.text
 
     # -- Work items ---------------------------------------------------------
@@ -221,13 +251,11 @@ class AzdoClient:
         self, wiki_identifier: str, path: str, *, content: str, version: str | None = None
     ) -> dict[str, Any]:
         url = f"wiki/wikis/{wiki_identifier}/pages"
-        merged_params = {"path": path, "api-version": API_VERSION}
-        headers = {"Content-Type": "application/json"}
-        if version:
-            headers["If-Match"] = version
-        response = await self._client.request(
-            "PUT", url, params=merged_params, json={"content": content}, headers=headers
+        extra_headers = {"If-Match": version} if version else None
+        return await self._request(
+            "PUT",
+            url,
+            params={"path": path},
+            json_body={"content": content},
+            extra_headers=extra_headers,
         )
-        if response.status_code >= 400:
-            raise AzdoRequestError("PUT", str(response.url), response.status_code, response.text[:500])
-        return response.json() if response.content else {}

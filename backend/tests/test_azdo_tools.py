@@ -246,3 +246,85 @@ def test_tools_work_without_job_id(persistence: Persistence) -> None:
         assert any(entry["action"] == "list_work_items" and entry["job_id"] is None for entry in entries)
 
     asyncio.run(_run())
+
+
+def test_transport_timeout_still_writes_exactly_one_audit_entry(persistence: Persistence) -> None:
+    """A network-level failure (no HTTP response at all) must not skip auditing."""
+
+    async def _run() -> None:
+        client = make_client()
+        job_id = uuid4()
+        try:
+            with respx.mock(base_url="https://dev.azure.com") as mock:
+                mock.get("/myorg/MyProject/_apis/git/repositories/repo-1/pullrequests/42").mock(
+                    side_effect=httpx.TimeoutException("timed out")
+                )
+                with pytest.raises(Exception):
+                    await azdo_tools.get_pr(
+                        client, persistence, repository_id="repo-1", pull_request_id=42, job_id=job_id
+                    )
+        finally:
+            await client.aclose()
+
+        entries = persistence.list_audit_entries(job_id)
+        assert len(entries) == 1
+        entry = entries[0]
+        assert entry["action"] == "get_pr"
+        assert entry["outcome"].startswith("error")
+        assert "timed out" in entry["outcome"]
+        assert "super-secret-pat" not in entry["outcome"]
+
+    asyncio.run(_run())
+
+
+def test_transport_connect_error_still_writes_exactly_one_audit_entry(persistence: Persistence) -> None:
+    async def _run() -> None:
+        client = make_client()
+        job_id = uuid4()
+        try:
+            with respx.mock(base_url="https://dev.azure.com") as mock:
+                mock.post("/myorg/MyProject/_apis/pipelines/9/runs").mock(
+                    side_effect=httpx.ConnectError("connection refused")
+                )
+                with pytest.raises(Exception):
+                    await azdo_tools.run_pipeline(client, persistence, pipeline_id=9, job_id=job_id)
+        finally:
+            await client.aclose()
+
+        entries = persistence.list_audit_entries(job_id)
+        assert len(entries) == 1
+        assert entries[0]["outcome"].startswith("error")
+        assert "connection refused" in entries[0]["outcome"]
+
+    asyncio.run(_run())
+
+
+def test_update_wiki_page_tool_audits_success_via_refactored_client_call(persistence: Persistence) -> None:
+    async def _run() -> None:
+        client = make_client()
+        job_id = uuid4()
+        try:
+            with respx.mock(base_url="https://dev.azure.com") as mock:
+                route = mock.put("/myorg/MyProject/_apis/wiki/wikis/main-wiki/pages").mock(
+                    return_value=httpx.Response(200, json={"id": 3})
+                )
+                result = await azdo_tools.update_wiki_page(
+                    client,
+                    persistence,
+                    wiki_identifier="main-wiki",
+                    path="/Home",
+                    content="updated content",
+                    version='"abc123"',
+                    job_id=job_id,
+                )
+                assert result["id"] == 3
+                assert route.calls.last.request.headers["If-Match"] == '"abc123"'
+        finally:
+            await client.aclose()
+
+        entries = persistence.list_audit_entries(job_id)
+        assert len(entries) == 1
+        assert entries[0]["action"] == "update_wiki_page"
+        assert entries[0]["outcome"].startswith("succeeded")
+
+    asyncio.run(_run())
