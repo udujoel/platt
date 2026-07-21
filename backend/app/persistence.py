@@ -192,6 +192,30 @@ class Persistence:
             ).mappings().all()
         return [dict(row) for row in reversed(rows)]
 
+    def list_events_since(self, seq: int, job_id: UUID | None = None) -> list[dict[str, Any]]:
+        """Return events with ``seq`` greater than the given cursor, in publication order.
+
+        Used by the SSE endpoint to backfill everything a client missed since its
+        last received ``Last-Event-ID``, optionally scoped to a single job.
+        """
+        query = "select seq, id, job_id, type, payload, created_at from events where seq > :seq"
+        params: dict[str, Any] = {"seq": seq}
+        if job_id:
+            query += " and job_id = :job_id"
+            params["job_id"] = str(job_id)
+        query += " order by seq asc"
+        with self._connect() as connection:
+            rows = connection.execute(text(query), params).mappings().all()
+        return [dict(row) for row in rows]
+
+    def get_event_seq(self, event_id: UUID) -> int | None:
+        """Look up the durable ``seq`` assigned to an already-recorded event."""
+        with self._connect() as connection:
+            row = connection.execute(
+                text("select seq from events where id = :id"), {"id": str(event_id)}
+            ).first()
+        return row[0] if row else None
+
     def list_audit_entries(self, job_id: UUID | None = None) -> list[dict[str, Any]]:
         query = "select id, job_id, tool, action, outcome, created_at from audit_entries"
         params: dict[str, Any] = {}
