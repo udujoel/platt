@@ -9,6 +9,7 @@ from threading import Thread
 from uuid import UUID, uuid4
 
 import pytest
+import sqlalchemy
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
@@ -44,7 +45,7 @@ def test_readiness_returns_service_unavailable_when_persistence_fails(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     def fail_readiness() -> None:
-        raise sqlite3.ProgrammingError("closed database")
+        raise RuntimeError("persistence unavailable")
 
     monkeypatch.setattr(client.app.state.persistence, "check_ready", fail_readiness)
 
@@ -83,6 +84,47 @@ def test_persistence_migrates_legacy_jobs_for_onboarding_binding(tmp_path) -> No
         assert legacy_job["onboarding_id"] is None
         persistence.record_job(job_id, prompt="Bound plan", onboarding_id=onboarding_id)
         assert persistence.get_job(job_id)["onboarding_id"] == str(onboarding_id)
+    finally:
+        persistence.close()
+
+
+def test_persistence_backfills_legacy_events_seq_in_insertion_order(tmp_path) -> None:
+    db_path = tmp_path / "legacy-events.sqlite3"
+    job_id = uuid4()
+    first_id, second_id, third_id = str(uuid4()), str(uuid4()), str(uuid4())
+    same_timestamp = "2026-07-18T01:00:00+00:00"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            create table events (
+                id text primary key,
+                job_id text,
+                type text not null,
+                payload text not null,
+                created_at text not null
+            )
+            """
+        )
+        connection.execute("create index idx_events_job_id on events (job_id)")
+        for event_id, label in ((first_id, "First"), (second_id, "Second"), (third_id, "Third")):
+            connection.execute(
+                "insert into events (id, job_id, type, payload, created_at) values (?, ?, ?, ?, ?)",
+                (event_id, str(job_id), "agent_state", json.dumps({"label": label}), same_timestamp),
+            )
+
+    persistence = Persistence(db_path)
+    try:
+        events = persistence.list_job_events(job_id)
+        assert [event["id"] for event in events] == [first_id, second_id, third_id]
+
+        new_event = AgentStateEvent(job_id=job_id, state=PlattState.WORKING, label="Fourth")
+        persistence.record_event(new_event)
+        events_after_write = persistence.list_job_events(job_id)
+        assert [event["id"] for event in events_after_write][-1] == str(new_event.id)
+
+        inspector = sqlalchemy.inspect(persistence.engine)
+        event_indexes = {index["name"] for index in inspector.get_indexes("events")}
+        assert "idx_events_job_id" in event_indexes
     finally:
         persistence.close()
 
@@ -276,7 +318,7 @@ def test_lifespan_closes_persistence_and_clears_event_recorder(tmp_path) -> None
         assert event_bus._recorder is not None
 
     assert event_bus._recorder is None
-    with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+    with pytest.raises(RuntimeError, match="closed database"):
         persistence.get_job(uuid4())
 
 
@@ -509,17 +551,11 @@ def test_persistence_creates_job_id_indexes(tmp_path) -> None:
     app = create_app(db_path=tmp_path / "platt-test.db")
 
     with TestClient(app):
-        connection = app.state.persistence._connection
-        event_indexes = {row[1] for row in connection.execute("pragma index_list(events)")}
-        audit_indexes = {row[1] for row in connection.execute("pragma index_list(audit_entries)")}
-        event_index_columns = {
-            row[2] for row in connection.execute("pragma index_info(idx_events_job_id)")
-        }
-        audit_index_columns = {
-            row[2] for row in connection.execute("pragma index_info(idx_audit_entries_job_id)")
-        }
+        inspector = sqlalchemy.inspect(app.state.persistence.engine)
+        event_indexes = {index["name"]: index for index in inspector.get_indexes("events")}
+        audit_indexes = {index["name"]: index for index in inspector.get_indexes("audit_entries")}
 
     assert "idx_events_job_id" in event_indexes
     assert "idx_audit_entries_job_id" in audit_indexes
-    assert event_index_columns == {"job_id"}
-    assert audit_index_columns == {"job_id"}
+    assert set(event_indexes["idx_events_job_id"]["column_names"]) == {"job_id"}
+    assert set(audit_indexes["idx_audit_entries_job_id"]["column_names"]) == {"job_id"}

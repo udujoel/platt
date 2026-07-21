@@ -25,7 +25,6 @@ from app.persistence import Persistence
 from app.services.onboarding import (
     OnboardingError,
     OnboardingNotFoundError,
-    OnboardingStore,
     execute_repository_tool,
     inspect_repository,
     onboarding_system_prompt,
@@ -39,17 +38,10 @@ router = APIRouter(prefix="/onboarding", tags=["onboarding"])
 REPOSITORY_REVIEW_PLAN_PROMPT = "Prepare a read-only repository review plan."
 
 
-def _store(request: Request) -> OnboardingStore:
-    store = getattr(request.app.state, "onboarding_store", None)
-    if not isinstance(store, OnboardingStore):
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="onboarding store is unavailable")
-    return store
-
-
 def _persistence(request: Request) -> Persistence:
     persistence = getattr(request.app.state, "persistence", None)
     if not isinstance(persistence, Persistence):
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="audit persistence is unavailable")
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="persistence is unavailable")
     return persistence
 
 
@@ -60,13 +52,13 @@ def onboard_repository(request: Request, payload: OnboardingRequest) -> Onboardi
         record = inspect_repository(payload.repository_path)
     except OnboardingError as error:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
-    return _store(request).save(record)
+    return _persistence(request).save_onboarding_record(record)
 
 
 @router.get("/{onboarding_id}", response_model=OnboardingRecord)
 def get_onboarding_record(request: Request, onboarding_id: UUID) -> OnboardingRecord:
     try:
-        return _store(request).get(onboarding_id)
+        return _persistence(request).get_onboarding_record(onboarding_id)
     except OnboardingNotFoundError as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="onboarding record not found") from error
 
@@ -74,7 +66,7 @@ def get_onboarding_record(request: Request, onboarding_id: UUID) -> OnboardingRe
 @router.get("/{onboarding_id}/module-trace", response_model=TerraformModuleTrace)
 def get_module_trace(request: Request, onboarding_id: UUID, module_path: str) -> TerraformModuleTrace:
     try:
-        return trace_module(_store(request).get(onboarding_id), module_path)
+        return trace_module(_persistence(request).get_onboarding_record(onboarding_id), module_path)
     except OnboardingNotFoundError as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="onboarding record or module not found") from error
 
@@ -86,7 +78,7 @@ async def chat_about_onboarded_repository(
     chat_request: ChatRequest,
 ) -> ChatResponse:
     try:
-        record = _store(request).get(onboarding_id)
+        record = _persistence(request).get_onboarding_record(onboarding_id)
     except OnboardingNotFoundError as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="onboarding record not found") from error
     job_id = uuid4()
@@ -115,7 +107,7 @@ async def chat_about_onboarded_repository(
 async def prepare_repository_review_plan(request: Request, onboarding_id: UUID) -> RepositoryInspectionPlanResponse:
     """Persist an inspectable, read-only review plan without invoking repository tools."""
     try:
-        record = _store(request).get(onboarding_id)
+        record = _persistence(request).get_onboarding_record(onboarding_id)
     except OnboardingNotFoundError as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="onboarding record not found") from error
     plan = repository_inspection_plan(record)
@@ -140,7 +132,7 @@ async def execute_repository_review_plan_step(
 ) -> RepositoryToolResponse:
     """Execute one explicit, pre-planned read-only tool step and audit its outcome."""
     try:
-        record = _store(request).get(onboarding_id)
+        record = _persistence(request).get_onboarding_record(onboarding_id)
     except OnboardingNotFoundError as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="onboarding record not found") from error
     persistence = _persistence(request)
@@ -185,7 +177,7 @@ async def execute_repository_review_plan_step(
 @router.get("/{onboarding_id}/tools", response_model=list[RepositoryToolDefinition])
 def list_repository_tools(request: Request, onboarding_id: UUID) -> list[RepositoryToolDefinition]:
     try:
-        _store(request).get(onboarding_id)
+        _persistence(request).get_onboarding_record(onboarding_id)
     except OnboardingNotFoundError as error:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="onboarding record not found") from error
     return repository_tool_definitions()
@@ -206,7 +198,7 @@ def invoke_repository_tool(
         persistence.record_audit_entry(None, tool=f"repo.{audit_tool}", action="execute", outcome="rejected")
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=error.errors()) from error
     try:
-        result = execute_repository_tool(_store(request).get(onboarding_id), parsed_invocation)
+        result = execute_repository_tool(_persistence(request).get_onboarding_record(onboarding_id), parsed_invocation)
     except OnboardingNotFoundError as error:
         persistence.record_audit_entry(None, tool=f"repo.{parsed_invocation.tool}", action="execute", outcome="not_found")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="onboarding record or inventory path not found") from error

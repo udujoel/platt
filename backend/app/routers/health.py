@@ -1,5 +1,3 @@
-import sqlite3
-
 from fastapi import APIRouter, HTTPException, Request, status
 
 from app.models import HealthResponse, ReadinessResponse
@@ -16,11 +14,11 @@ async def health() -> HealthResponse:
 
 @router.get("/ready", response_model=ReadinessResponse)
 def readiness(request: Request) -> ReadinessResponse:
-    """Report readiness after a threadpool-executed persistence read."""
+    """Report readiness after a persistence read against SQLite or Postgres."""
 
     try:
         request.app.state.persistence.check_ready()
-    except sqlite3.Error as error:
+    except Exception as error:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Persistence is unavailable",

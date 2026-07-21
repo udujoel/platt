@@ -12,7 +12,6 @@ from app.background_tasks import cancel_background_tasks
 from app.event_bus import event_bus
 from app.persistence import Persistence
 from app.routers import audit, chat, dev, events, health, jobs, onboarding, ws
-from app.services.onboarding import OnboardingStore
 
 
 LOCAL_VITE_ORIGIN_REGEX = r"^http://(?:localhost|127\.0\.0\.1):517\d+$"
@@ -45,14 +44,14 @@ def resolve_allowed_origin_regex(configured_regex: str | None = None) -> str:
 
 def create_app(
     db_path: str | Path | None = None,
-    onboarding_db_path: Path | None = None,
     allowed_origin_regex: str | None = None,
+    database_url: str | None = None,
 ) -> FastAPI:
+    persistence = Persistence(db_path=db_path, database_url=database_url)
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        persistence = Persistence(db_path=db_path)
         recorder = persistence.record_event
-        app.state.persistence = persistence
         app.state.background_tasks: set[asyncio.Task[Any]] = set()
         event_bus.set_recorder(recorder)
         try:
@@ -64,7 +63,7 @@ def create_app(
 
     origin_regex = resolve_allowed_origin_regex(allowed_origin_regex)
     app = FastAPI(title="Platt API", version="0.1.0", lifespan=lifespan)
-    app.state.onboarding_store = OnboardingStore(onboarding_db_path)
+    app.state.persistence = persistence
     app.state.allowed_origin_regex = origin_regex
     app.state.allowed_origin_pattern = re.compile(origin_regex)
     app.add_middleware(

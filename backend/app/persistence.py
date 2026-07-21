@@ -1,72 +1,78 @@
-import os
-import sqlite3
+import json
+from contextlib import contextmanager
 from pathlib import Path
 from threading import Lock
 from typing import Any
 from uuid import UUID
 
-from app.models import Event
+from sqlalchemy import text
+from sqlalchemy.engine import Engine
 
-
-DEFAULT_DB_PATH = "platt.db"
+from app.db import create_engine_for, resolve_database_url, run_migrations
+from app.models import Event, OnboardingRecord
+from app.services.onboarding import OnboardingNotFoundError
 
 
 class Persistence:
-    def __init__(self, db_path: str | Path | None = None) -> None:
-        configured_path = db_path or os.getenv("PLATT_DB_PATH") or DEFAULT_DB_PATH
-        self.path = str(configured_path)
+    """Job/event/audit/onboarding storage on SQLite (local) or Neon Postgres (prod).
+
+    The backend is chosen by ``DATABASE_URL`` (see ``app.db.resolve_database_url``).
+    Methods stay synchronous: ``app.event_bus`` invokes its recorder callback without
+    awaiting it, so this class cannot expose an async surface without silently
+    dropping event writes.
+
+    A single file-backed SQLite connection cannot serve concurrent writers safely,
+    so calls are serialized with a lock only for that backend; Postgres relies on
+    SQLAlchemy's pooled connections instead, so the lock would only add contention.
+    """
+
+    def __init__(
+        self,
+        db_path: str | Path | None = None,
+        database_url: str | None = None,
+    ) -> None:
+        self.database_url = resolve_database_url(db_path, database_url)
+        self.engine: Engine = create_engine_for(self.database_url)
+        self._serialize = self.database_url.startswith("sqlite")
         self._lock = Lock()
-        self._connection = sqlite3.connect(self.path, check_same_thread=False)
-        self._connection.row_factory = sqlite3.Row
+        self._closed = False
         self.init_schema()
 
     def init_schema(self) -> None:
-        with self._lock, self._connection:
-            self._connection.executescript(
-                """
-                create table if not exists jobs (
-                    id text primary key,
-                    prompt text not null,
-                    status text not null,
-                    onboarding_id text,
-                    created_at text not null default current_timestamp,
-                    updated_at text not null default current_timestamp
-                );
-
-                create table if not exists events (
-                    id text primary key,
-                    job_id text,
-                    type text not null,
-                    payload text not null,
-                    created_at text not null
-                );
-
-                create table if not exists audit_entries (
-                    id integer primary key autoincrement,
-                    job_id text,
-                    tool text not null,
-                    action text not null,
-                    outcome text not null,
-                    created_at text not null default current_timestamp
-                );
-
-                create index if not exists idx_events_job_id on events (job_id);
-                create index if not exists idx_audit_entries_job_id on audit_entries (job_id);
-                """
-            )
-            job_columns = {row["name"] for row in self._connection.execute("pragma table_info(jobs)")}
-            if "onboarding_id" not in job_columns:
-                self._connection.execute("alter table jobs add column onboarding_id text")
+        with self._serialized():
+            run_migrations(self.engine)
 
     def close(self) -> None:
-        with self._lock:
-            self._connection.close()
+        with self._serialized():
+            self._closed = True
+            self.engine.dispose()
+
+    @contextmanager
+    def _serialized(self):
+        if self._serialize:
+            with self._lock:
+                yield
+        else:
+            yield
+
+    @contextmanager
+    def _connect(self):
+        if self._closed:
+            raise RuntimeError("Cannot operate on a closed database")
+        with self._serialized(), self.engine.connect() as connection:
+            yield connection
+
+    @contextmanager
+    def _begin(self):
+        if self._closed:
+            raise RuntimeError("Cannot operate on a closed database")
+        with self._serialized(), self.engine.begin() as connection:
+            yield connection
 
     def check_ready(self) -> None:
-        """Verify that the current process can read from its SQLite connection."""
-
-        with self._lock:
-            self._connection.execute("select 1").fetchone()
+        """Verify that the current process can read from its configured database."""
+        with self._connect() as connection:
+            connection.execute(text("select 1"))
 
     def record_job(
         self,
@@ -75,97 +81,152 @@ class Persistence:
         status: str = "accepted",
         onboarding_id: UUID | None = None,
     ) -> None:
-        with self._lock, self._connection:
-            self._connection.execute(
-                """
-                insert into jobs (id, prompt, status, onboarding_id)
-                values (?, ?, ?, ?)
-                on conflict(id) do update set
-                    prompt = excluded.prompt,
-                    status = excluded.status,
-                    onboarding_id = coalesce(excluded.onboarding_id, jobs.onboarding_id),
-                    updated_at = current_timestamp
-                """,
-                (str(job_id), prompt, status, str(onboarding_id) if onboarding_id else None),
+        with self._begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    insert into jobs (id, prompt, status, onboarding_id)
+                    values (:id, :prompt, :status, :onboarding_id)
+                    on conflict(id) do update set
+                        prompt = excluded.prompt,
+                        status = excluded.status,
+                        onboarding_id = coalesce(excluded.onboarding_id, jobs.onboarding_id),
+                        updated_at = current_timestamp
+                    """
+                ),
+                {
+                    "id": str(job_id),
+                    "prompt": prompt,
+                    "status": status,
+                    "onboarding_id": str(onboarding_id) if onboarding_id else None,
+                },
             )
 
     def update_job_status(self, job_id: UUID, status: str) -> None:
-        with self._lock, self._connection:
-            self._connection.execute(
-                "update jobs set status = ?, updated_at = current_timestamp where id = ?",
-                (status, str(job_id)),
+        with self._begin() as connection:
+            connection.execute(
+                text("update jobs set status = :status, updated_at = current_timestamp where id = :id"),
+                {"status": status, "id": str(job_id)},
             )
 
     def record_event(self, event: Event) -> None:
         payload = event.model_dump_json()
         job_id = getattr(event, "job_id", None)
-        with self._lock, self._connection:
-            self._connection.execute(
-                """
-                insert or replace into events (id, job_id, type, payload, created_at)
-                values (?, ?, ?, ?, ?)
-                """,
-                (
-                    str(event.id),
-                    str(job_id) if job_id else None,
-                    str(event.type),
-                    payload,
-                    event.created_at.isoformat(),
+        with self._begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    insert into events (id, job_id, type, payload, created_at)
+                    values (:id, :job_id, :type, :payload, :created_at)
+                    on conflict(id) do update set
+                        job_id = excluded.job_id,
+                        type = excluded.type,
+                        payload = excluded.payload,
+                        created_at = excluded.created_at
+                    """
                 ),
+                {
+                    "id": str(event.id),
+                    "job_id": str(job_id) if job_id else None,
+                    "type": str(event.type),
+                    "payload": payload,
+                    "created_at": event.created_at.isoformat(),
+                },
             )
 
     def record_audit_entry(self, job_id: UUID | None, tool: str, action: str, outcome: str) -> None:
-        with self._lock, self._connection:
-            self._connection.execute(
-                """
-                insert into audit_entries (job_id, tool, action, outcome)
-                values (?, ?, ?, ?)
-                """,
-                (str(job_id) if job_id else None, tool, action, outcome),
+        with self._begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    insert into audit_entries (job_id, tool, action, outcome)
+                    values (:job_id, :tool, :action, :outcome)
+                    """
+                ),
+                {
+                    "job_id": str(job_id) if job_id else None,
+                    "tool": tool,
+                    "action": action,
+                    "outcome": outcome,
+                },
             )
 
     def get_job(self, job_id: UUID) -> dict[str, Any] | None:
-        with self._lock:
-            row = self._connection.execute(
-                "select id, prompt, status, onboarding_id, created_at, updated_at from jobs where id = ?",
-                (str(job_id),),
-            ).fetchone()
+        with self._connect() as connection:
+            row = connection.execute(
+                text(
+                    "select id, prompt, status, onboarding_id, created_at, updated_at from jobs where id = :id"
+                ),
+                {"id": str(job_id)},
+            ).mappings().first()
         return dict(row) if row else None
 
     def list_job_events(self, job_id: UUID) -> list[dict[str, Any]]:
-        with self._lock:
-            rows = self._connection.execute(
-                """
-                select id, job_id, type, payload, created_at
-                from events
-                where job_id = ?
-                order by created_at asc, rowid asc
-                """,
-                (str(job_id),),
-            ).fetchall()
+        with self._connect() as connection:
+            rows = connection.execute(
+                text(
+                    """
+                    select id, job_id, type, payload, created_at
+                    from events
+                    where job_id = :job_id
+                    order by created_at asc, seq asc
+                    """
+                ),
+                {"job_id": str(job_id)},
+            ).mappings().all()
         return [dict(row) for row in rows]
 
     def list_recent_events(self, limit: int) -> list[dict[str, Any]]:
         """Return a bounded replay window in stable publication order."""
-        with self._lock:
-            rows = self._connection.execute(
-                """
-                select id, job_id, type, payload, created_at
-                from events
-                order by created_at desc, rowid desc
-                limit ?
-                """,
-                (limit,),
-            ).fetchall()
+        with self._connect() as connection:
+            rows = connection.execute(
+                text(
+                    """
+                    select id, job_id, type, payload, created_at
+                    from events
+                    order by created_at desc, seq desc
+                    limit :limit
+                    """
+                ),
+                {"limit": limit},
+            ).mappings().all()
         return [dict(row) for row in reversed(rows)]
 
     def list_audit_entries(self, job_id: UUID | None = None) -> list[dict[str, Any]]:
         query = "select id, job_id, tool, action, outcome, created_at from audit_entries"
-        params: tuple[str, ...] = ()
+        params: dict[str, Any] = {}
         if job_id:
-            query += " where job_id = ?"
-            params = (str(job_id),)
+            query += " where job_id = :job_id"
+            params["job_id"] = str(job_id)
         query += " order by created_at desc"
-        with self._lock:
-            rows = self._connection.execute(query, params).fetchall()
+        with self._connect() as connection:
+            rows = connection.execute(text(query), params).mappings().all()
         return [dict(row) for row in rows]
+
+    def save_onboarding_record(self, record: OnboardingRecord) -> OnboardingRecord:
+        with self._begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    insert into onboarding_records (id, repository_path, created_at, record_json)
+                    values (:id, :repository_path, :created_at, :record_json)
+                    """
+                ),
+                {
+                    "id": str(record.id),
+                    "repository_path": record.repository_path,
+                    "created_at": record.created_at.isoformat(),
+                    "record_json": record.model_dump_json(),
+                },
+            )
+        return record
+
+    def get_onboarding_record(self, onboarding_id: UUID) -> OnboardingRecord:
+        with self._connect() as connection:
+            row = connection.execute(
+                text("select record_json from onboarding_records where id = :id"),
+                {"id": str(onboarding_id)},
+            ).first()
+        if row is None:
+            raise OnboardingNotFoundError(str(onboarding_id))
+        return OnboardingRecord.model_validate(json.loads(row[0]))

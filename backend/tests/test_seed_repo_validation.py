@@ -14,10 +14,7 @@ SEED_REPOSITORY = Path(__file__).resolve().parents[2] / "seed-infra"
 def onboarded_seed_repository(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, str]:
     monkeypatch.setenv("PLATT_ONBOARDING_ROOT", str(SEED_REPOSITORY.parent))
     with TestClient(
-        create_app(
-            db_path=tmp_path / "platt.sqlite3",
-            onboarding_db_path=tmp_path / "onboarding.sqlite3",
-        )
+        create_app(db_path=tmp_path / "platt.sqlite3")
     ) as client:
         created = client.post("/onboarding", json={"repository_path": str(SEED_REPOSITORY)})
         assert created.status_code == 201
