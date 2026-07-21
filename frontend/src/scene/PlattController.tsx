@@ -30,7 +30,7 @@ export function PlattController() {
 
   React.useEffect(() => {
     const plan = selectCrossfade(previousState.current, state);
-    characterRef.current?.playClip(plan.fadeInClip);
+    characterRef.current?.playClip(plan);
     previousState.current = state;
   }, [state]);
 

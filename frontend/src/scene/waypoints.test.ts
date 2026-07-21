@@ -20,4 +20,8 @@ describe("pickNextWaypoint", () => {
     const single = [IDLE_WAYPOINTS[0]];
     expect(pickNextWaypoint(single[0].id, single, () => 0)).toEqual(single[0]);
   });
+
+  it("throws instead of returning undefined for an empty waypoint list", () => {
+    expect(() => pickNextWaypoint(null, [], () => 0)).toThrow(/non-empty/);
+  });
 });

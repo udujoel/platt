@@ -59,7 +59,7 @@ export function ThreeOfficeScene({
   React.useEffect(() => setState(state), [state, setState]);
   React.useEffect(() => setSpeech(speech), [speech, setSpeech]);
   React.useEffect(() => {
-    if (boardColumns) setBoardColumns(boardColumns);
+    setBoardColumns(boardColumns ?? [0, 0, 0]);
   }, [boardColumns, setBoardColumns]);
 
   return (

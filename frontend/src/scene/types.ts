@@ -15,13 +15,23 @@ export type PlattClipName =
   | "celebrate"
   | "dejected";
 
+/** Which clip to fade out of / into, and how long each fade takes (seconds). */
+export type CrossfadePlan = {
+  fadeOutClip: PlattClipName | null;
+  fadeInClip: PlattClipName;
+  fadeOutSeconds: number;
+  fadeInSeconds: number;
+};
+
 /**
  * Contract a `platt.glb` loader must satisfy to drop in for `PlattCharacter` with no
- * controller changes: it plays named clips and reports which one is active.
+ * controller changes: it runs a crossfade plan and reports which clip is active. Receiving
+ * the full plan (not just the target clip) lets a real `useAnimations` implementation fade
+ * the outgoing action out while fading the incoming one in, per PRD 5.3.
  */
 export type CharacterHandle = {
   readonly currentClip: PlattClipName;
-  playClip: (clip: PlattClipName) => void;
+  playClip: (plan: CrossfadePlan) => void;
 };
 
 export type PlattCharacterProps = {

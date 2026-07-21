@@ -1,5 +1,5 @@
 import type { ThreeStageState } from "../three-stage-pose";
-import type { PlattClipName } from "./types";
+import type { CrossfadePlan, PlattClipName } from "./types";
 
 export const CROSSFADE_DURATION_SECONDS = 0.3;
 
@@ -17,13 +17,6 @@ const STATE_CLIPS: Record<ThreeStageState, PlattClipName> = {
 export function clipForState(state: ThreeStageState): PlattClipName {
   return STATE_CLIPS[state];
 }
-
-export type CrossfadePlan = {
-  fadeOutClip: PlattClipName | null;
-  fadeInClip: PlattClipName;
-  fadeOutSeconds: number;
-  fadeInSeconds: number;
-};
 
 /**
  * Selects the clip crossfade for a state transition, per PRD 5.3:

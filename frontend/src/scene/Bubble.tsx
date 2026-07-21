@@ -1,6 +1,6 @@
 import React from "react";
 import { usePlattSceneStore } from "./scene-store";
-import { isBubbleVisible, truncateBubbleText } from "./speech-bubble";
+import { BUBBLE_HIDE_DELAY_MS, isBubbleVisible, truncateBubbleText } from "./speech-bubble";
 
 /**
  * Speech bubble: streams the current assistant text (truncated per scene/bubble.ts), hides
@@ -25,8 +25,8 @@ export function Bubble() {
   React.useEffect(() => {
     if (completedAt === null) return;
     setNow(Date.now());
-    const id = window.setInterval(() => setNow(Date.now()), 250);
-    return () => window.clearInterval(id);
+    const id = window.setTimeout(() => setNow(Date.now()), BUBBLE_HIDE_DELAY_MS);
+    return () => window.clearTimeout(id);
   }, [completedAt]);
 
   const visible = isBubbleVisible({

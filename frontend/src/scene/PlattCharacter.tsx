@@ -29,8 +29,8 @@ export const PlattCharacter = React.forwardRef<CharacterHandle, PlattCharacterPr
       get currentClip() {
         return currentClip.current;
       },
-      playClip: (next) => {
-        currentClip.current = next;
+      playClip: (plan) => {
+        currentClip.current = plan.fadeInClip;
       },
     }),
     [],

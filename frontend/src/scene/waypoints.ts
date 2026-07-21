@@ -17,6 +17,9 @@ export function pickNextWaypoint(
   waypoints: Waypoint[] = IDLE_WAYPOINTS,
   rng: () => number = Math.random,
 ): Waypoint {
+  if (waypoints.length === 0) {
+    throw new Error("pickNextWaypoint requires a non-empty waypoint list");
+  }
   const candidates = waypoints.filter((waypoint) => waypoint.id !== currentId);
   const pool = candidates.length > 0 ? candidates : waypoints;
   const index = Math.min(pool.length - 1, Math.floor(rng() * pool.length));
