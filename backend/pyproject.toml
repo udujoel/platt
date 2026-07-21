@@ -5,6 +5,7 @@ description = "Phase 1 FastAPI backend skeleton for Platt."
 requires-python = ">=3.12"
 dependencies = [
     "anthropic>=0.79.0",
+    "openai>=1.50.0",
     "fastapi>=0.116.0",
     "psycopg[binary]>=3.1.0",
     "pydantic>=2.8.0",
