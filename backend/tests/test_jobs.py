@@ -84,5 +84,5 @@ def test_chat_job_explains_missing_configuration_without_exposing_an_exception()
 
     message = "".join(event.delta for event in bus.events if isinstance(event, ChatDeltaEvent))
 
-    assert "ANTHROPIC_API_KEY" in message
+    assert "GROQ_API_KEY" in message
     assert "LLMConfigurationError" not in message

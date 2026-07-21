@@ -41,7 +41,7 @@ async def stream_chat_job(
             raise RuntimeError("The language model returned an empty response.")
     except LLMConfigurationError:
         await bus.publish(AgentStateEvent(job_id=job_id, state=PlattState.CONCERNED, label="Chat provider unavailable"))
-        await bus.publish(ChatDeltaEvent(job_id=job_id, delta="Anthropic is not configured. Set ANTHROPIC_API_KEY to stream a live Platt response.", index=next_index))
+        await bus.publish(ChatDeltaEvent(job_id=job_id, delta="No LLM provider is configured. Set GROQ_API_KEY to stream a live Platt response.", index=next_index))
         next_index += 1
     except Exception:
         await bus.publish(AgentStateEvent(job_id=job_id, state=PlattState.CONCERNED, label="Chat provider failed"))
