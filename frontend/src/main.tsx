@@ -14,6 +14,12 @@ import type { StageRenderer } from "./stage-renderer";
 import { parseBackendEvent } from "./backend-events";
 import type { BackendEvent, PlattState } from "./backend-events";
 import { createSseClient } from "./sse-client";
+import { IconRail } from "./panels/IconRail";
+import type { RailPanel } from "./panels/IconRail";
+import { KanbanPanel } from "./panels/KanbanPanel";
+import { DashboardPanel } from "./panels/DashboardPanel";
+import { ApprovalGate } from "./panels/ApprovalCard";
+import { closeActivePanel, toggleActivePanel } from "./panels/panel-visibility";
 
 const ThreeOfficeScene = React.lazy(() => import("./scene/ThreeOfficeScene").then(({ ThreeOfficeScene: Scene }) => ({ default: Scene })));
 
@@ -435,7 +441,19 @@ function OfficeScene({ state, speech }: { state: PlattState; speech: string }) {
   </div>;
 }
 
-function Stage({ readiness }: { readiness: BackendReadiness }) {
+function Stage({
+  readiness,
+  lastEvent,
+  activePanel,
+  onSelectPanel,
+  onClosePanel,
+}: {
+  readiness: BackendReadiness;
+  lastEvent: BackendEvent | null;
+  activePanel: RailPanel | null;
+  onSelectPanel: (panel: RailPanel) => void;
+  onClosePanel: (panel: RailPanel) => void;
+}) {
   const state = useEventStore((store) => store.state);
   const connection = useEventStore((store) => store.connection);
   const messages = useEventStore((store) => store.messages);
@@ -461,6 +479,9 @@ function Stage({ readiness }: { readiness: BackendReadiness }) {
         <span>Platt · embodied DevOps agent</span>
         <span>Live event projection</span>
       </div>
+      <IconRail active={activePanel} onSelect={onSelectPanel} />
+      <KanbanPanel open={activePanel === "kanban"} onClose={() => onClosePanel("kanban")} lastEvent={lastEvent} />
+      <DashboardPanel open={activePanel === "dashboard"} onClose={() => onClosePanel("dashboard")} />
     </section>
   );
 }
@@ -652,6 +673,7 @@ function AuditInspector({
   onboardingRecord,
   onOnboardingRecordChange,
   onPlanJobAccepted,
+  highlighted,
 }: {
   selectedJobId: string | null;
   onSelectJob: (jobId: string) => void;
@@ -659,6 +681,7 @@ function AuditInspector({
   onboardingRecord: OnboardingRecord | null;
   onOnboardingRecordChange: (record: OnboardingRecord) => void;
   onPlanJobAccepted: (jobId: string) => void;
+  highlighted: boolean;
 }) {
   const [audit, setAudit] = React.useState<AsyncState<AuditEntry[]>>(initialAuditState);
   const [job, setJob] = React.useState<AsyncState<Job | null>>(initialJobState);
@@ -730,7 +753,7 @@ function AuditInspector({
   }, [lastEvent, onSelectJob, refreshAudit, refreshJob, selectedJobId]);
 
   return (
-    <aside className="auditPanel" aria-label="Audit and job inspector">
+    <aside className={`auditPanel ${highlighted ? "highlighted" : ""}`} aria-label="Audit and job inspector">
       <RepositoryContext record={onboardingRecord} onRecordChange={onOnboardingRecordChange} onPlanJobAccepted={onPlanJobAccepted} />
       <section className="auditSection auditListSection" aria-labelledby="audit-heading">
         <header className="auditHeader">
@@ -960,7 +983,10 @@ function ConnectedApp() {
   const readiness = useBackendReadiness();
   const [selectedJobId, setSelectedJobId] = React.useState<string | null>(null);
   const [onboardingRecord, setOnboardingRecord] = React.useState<OnboardingRecord | null>(null);
+  const [activePanel, setActivePanel] = React.useState<RailPanel | null>(null);
   const selectJob = React.useCallback((jobId: string) => setSelectedJobId(jobId), []);
+  const selectPanel = React.useCallback((panel: RailPanel) => setActivePanel((current) => toggleActivePanel(current, panel)), []);
+  const closePanel = React.useCallback((panel: RailPanel) => setActivePanel((current) => closeActivePanel(current, panel)), []);
 
   return (
     <main className="appShell">
@@ -971,9 +997,19 @@ function ConnectedApp() {
         onboardingRecord={onboardingRecord}
         onOnboardingRecordChange={setOnboardingRecord}
         onPlanJobAccepted={selectJob}
+        highlighted={activePanel === "audit"}
       />
-      <Stage readiness={readiness} />
-      <ChatPanel onJobAccepted={selectJob} onboardingRecord={onboardingRecord} />
+      <Stage
+        readiness={readiness}
+        lastEvent={lastEvent}
+        activePanel={activePanel}
+        onSelectPanel={selectPanel}
+        onClosePanel={closePanel}
+      />
+      <div className="chatColumn">
+        <ApprovalGate apiBaseUrl={apiBaseUrl} lastEvent={lastEvent} />
+        <ChatPanel onJobAccepted={selectJob} onboardingRecord={onboardingRecord} />
+      </div>
     </main>
   );
 }

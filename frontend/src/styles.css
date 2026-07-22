@@ -1071,3 +1071,192 @@ input {
 .thoughtDots { position:absolute; z-index:8; top:4%; right:-4%; display:flex; align-items:end; gap:.35rem; }.thoughtDots b{display:block;width:.6rem;height:.6rem;border-radius:50%;background:#f4f7fb;animation:thinkDot 1s ease-in-out infinite}.thoughtDots b:nth-child(2){width:.85rem;height:.85rem;animation-delay:.15s}.thoughtDots b:nth-child(3){width:1.25rem;height:1.25rem;animation-delay:.3s}.plattBubble { position:absolute; z-index:9; top:-19%; left:56%; width:220px; padding:.7rem .85rem; border:1px solid rgba(244,247,251,.34); border-radius:13px 13px 13px 2px; background:rgba(14,19,28,.92); box-shadow:0 18px 40px rgba(0,0,0,.32); color:#f4f7fb; font-size:.78rem; line-height:1.35; animation:bubbleIn .2s ease-out; }.confetti{position:absolute;z-index:7;inset:0;pointer-events:none;opacity:0}.confetti i{position:absolute;top:13%;left:47%;width:7px;height:12px;background:#ffb454}.confetti i:nth-child(2){background:#2dd4bf}.confetti i:nth-child(3){background:#f87171}.confetti i:nth-child(4){background:#8bb8ff}.confetti i:nth-child(5){background:#f4f7fb}
 .plattCharacter.listening{left:47%}.plattCharacter.thinking .plattBody{animation:pace 1.9s ease-in-out infinite}.plattCharacter.working{left:67%;bottom:24%;transform:translateX(-50%) scale(.8)}.plattCharacter.working .plattArm{animation:type .18s linear infinite alternate}.plattCharacter.working .plattHead{transform:rotate(7deg)}.plattCharacter.talking .plattArm.right{animation:gesture .75s ease-in-out infinite alternate}.plattCharacter.talking .mouth{height:21%;animation:speak .3s linear infinite alternate}.plattCharacter.awaiting_approval{left:28%;bottom:20%}.plattCharacter.awaiting_approval .plattArm.right{animation:point .8s ease-in-out infinite alternate}.plattCharacter.celebrating{animation:hop .7s ease-in-out 2}.plattCharacter.celebrating .plattArm{animation:cheer .38s ease-in-out infinite alternate}.plattCharacter.celebrating .confetti{animation:confetti .95s ease-out 1}.plattCharacter.concerned{filter:saturate(.8);animation:shake .3s ease-in-out 4}.plattCharacter.concerned .mouth{width:33%;border-bottom:0;border-top:3px solid #743e37;border-radius:60% 60% 0 0}
 @keyframes breathe{50%{transform:translateY(-4px)}}@keyframes pace{50%{transform:translateX(16px) rotate(1deg)}}@keyframes type{to{transform:rotate(20deg) translateY(5px)}}@keyframes gesture{to{transform:rotate(-39deg)}}@keyframes point{to{transform:rotate(-64deg)}}@keyframes speak{to{transform:scaleY(.45)}}@keyframes hop{50%{transform:translateX(-50%) translateY(-38px)}}@keyframes cheer{to{transform:rotate(126deg)}}@keyframes confetti{15%{opacity:1}100%{opacity:0}}@keyframes thinkDot{50%{transform:translateY(-5px);opacity:.5}}@keyframes bubbleIn{from{transform:translateY(5px);opacity:0}}@keyframes shake{25%{transform:translateX(-54%)}75%{transform:translateX(-46%)}}
+
+/* Left icon rail: slides Kanban / Dashboard panels over the 3D scene and
+   highlights the (always-visible) audit column. Panels stay glass, the
+   scene stays the hero. */
+.iconRail {
+  position: absolute;
+  z-index: 6;
+  top: 50%;
+  left: clamp(14px, 2.4vw, 28px);
+  transform: translateY(-50%);
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.5rem;
+  border-radius: 1rem;
+  background: rgba(14, 18, 26, 0.72);
+  border: 1px solid rgba(244, 247, 251, 0.12);
+  backdrop-filter: blur(18px);
+}
+
+.iconRail button {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: none;
+  border-radius: 0.7rem;
+  background: transparent;
+  color: rgba(244, 247, 251, 0.7);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.iconRail button:hover { background: rgba(244, 247, 251, 0.08); color: #f4f7fb; }
+.iconRail button.active { background: rgba(255, 180, 84, 0.18); color: #ffb454; }
+
+.auditPanel.highlighted { box-shadow: inset 3px 0 0 #ffb454; }
+
+.slideOverPanel {
+  position: absolute;
+  z-index: 5;
+  inset: 0 auto 0 0;
+  width: min(560px, 88vw);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0.9rem;
+  padding: 1.4rem;
+  background: rgba(14, 18, 26, 0.92);
+  border-right: 1px solid rgba(244, 247, 251, 0.14);
+  backdrop-filter: blur(22px);
+  box-shadow: 2rem 0 4rem rgba(0, 0, 0, 0.35);
+  transform: translateX(-105%);
+  transition: transform 0.2s ease;
+  overflow-y: auto;
+}
+
+.slideOverPanel.open { transform: translateX(0); }
+
+.slideOverHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.slideOverHeader h1 { margin: 0.2rem 0 0; font-size: 1.3rem; }
+
+.seededBadge {
+  margin: 0;
+  padding: 0.35rem 0.6rem;
+  border-radius: 0.5rem;
+  width: fit-content;
+  background: rgba(255, 180, 84, 0.14);
+  color: #ffb454;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.kanbanColumns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+  align-content: start;
+}
+
+.kanbanColumn {
+  min-width: 0;
+  border-radius: 0.8rem;
+  background: rgba(244, 247, 251, 0.04);
+  border: 1px solid rgba(244, 247, 251, 0.08);
+  padding: 0.7rem;
+}
+
+.kanbanColumn header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(244, 247, 251, 0.7);
+}
+
+.kanbanColumn ol { list-style: none; margin: 0.6rem 0 0; padding: 0; display: grid; gap: 0.5rem; }
+
+.kanbanCard {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.55rem;
+  background: rgba(18, 22, 30, 0.9);
+  border: 1px solid rgba(244, 247, 251, 0.1);
+  font-size: 0.82rem;
+}
+
+.kanbanCard span { color: rgba(244, 247, 251, 0.5); font-size: 0.68rem; }
+
+.dashboardBody { display: grid; gap: 1rem; overflow-y: auto; }
+
+.dashboardCard {
+  padding: 0.9rem 1rem;
+  border-radius: 0.8rem;
+  background: rgba(244, 247, 251, 0.04);
+  border: 1px solid rgba(244, 247, 251, 0.08);
+}
+
+.dashboardCard h2 { margin: 0 0 0.6rem; font-size: 0.85rem; display: flex; align-items: center; gap: 0.4rem; }
+
+.sparklineRow + .sparklineRow { margin-top: 0.6rem; }
+.sparklineLabel { display: flex; justify-content: space-between; font-size: 0.78rem; color: rgba(244, 247, 251, 0.75); }
+.sparklineChart { margin-top: 0.2rem; }
+
+.openPrList, .versionList { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.45rem; }
+.openPrList li { display: flex; align-items: center; gap: 0.45rem; font-size: 0.8rem; }
+.openPrList a { color: #f4f7fb; text-decoration: none; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.openPrList .prTitleSample { color: rgba(244, 247, 251, 0.72); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: default; border-bottom: 1px dashed rgba(244, 247, 251, 0.28); }
+.openPrList span { color: rgba(244, 247, 251, 0.5); font-size: 0.72rem; white-space: nowrap; }
+
+.versionList li { display: flex; justify-content: space-between; font-size: 0.8rem; }
+.versionList li.behind span:last-child { color: #ffb454; }
+.versionList li.current span:last-child { color: #2dd4bf; }
+
+.moduleGraphCanvas { height: 220px; border-radius: 0.6rem; overflow: hidden; background: #0d1118; }
+.moduleGraphDetail { margin: 0.6rem 0 0; font-size: 0.78rem; color: rgba(244, 247, 251, 0.72); }
+
+.chatColumn { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 100vh; min-width: 0; }
+
+.approvalGate { display: grid; gap: 0.6rem; padding: 0.9rem 0.9rem 0; }
+
+.approvalCard {
+  border-radius: 0.8rem;
+  padding: 0.8rem 0.9rem;
+  background: rgba(18, 22, 30, 0.92);
+  border: 2px solid #ffb454;
+}
+
+.approvalCard.approved { border-color: #2dd4bf; }
+.approvalCard.rejected { border-color: #f87171; }
+
+.approvalCard header { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; }
+.approvalCard p { margin: 0.4rem 0; font-size: 0.82rem; color: rgba(244, 247, 251, 0.78); }
+
+.approvalError { display: flex; align-items: center; gap: 0.35rem; color: #f87171; font-size: 0.75rem; margin-bottom: 0.4rem; }
+
+.approvalActions { display: flex; gap: 0.5rem; }
+.approvalActions button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 0.55rem;
+  border: none;
+  font-weight: 700;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.approveButton { background: rgba(45, 212, 191, 0.16); color: #2dd4bf; }
+.approveButton:hover:not(:disabled) { background: rgba(45, 212, 191, 0.28); }
+.rejectButton { background: rgba(248, 113, 113, 0.14); color: #f87171; }
+.rejectButton:hover:not(:disabled) { background: rgba(248, 113, 113, 0.26); }
+.approvalActions button:disabled { opacity: 0.6; cursor: default; }
+
+@media (max-width: 900px) {
+  .slideOverPanel { width: 100vw; }
+  .kanbanColumns { grid-template-columns: 1fr; }
+}

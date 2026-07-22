@@ -9,7 +9,8 @@ from __future__ import annotations
 
 import os
 from collections.abc import AsyncIterator
-from typing import Protocol
+from dataclasses import dataclass, field
+from typing import Any, Protocol
 
 
 DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
@@ -32,6 +33,28 @@ class LLMConfigurationError(RuntimeError):
 class StreamingLLM(Protocol):
     async def stream_response(self, prompt: str, system_prompt: str | None = None) -> AsyncIterator[str]:
         """Yield text deltas for one tool-free response."""
+
+
+@dataclass(frozen=True)
+class LLMToolCall:
+    """One tool call the model asked for, as returned by the provider."""
+
+    id: str
+    name: str
+    arguments: str  # Raw JSON text; the caller is responsible for parsing it.
+
+
+@dataclass(frozen=True)
+class LLMTurn:
+    """One non-streaming turn: either a final answer, or tool calls to run."""
+
+    content: str | None
+    tool_calls: tuple[LLMToolCall, ...] = field(default_factory=tuple)
+
+
+class ToolCallingLLM(Protocol):
+    async def complete_turn(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> LLMTurn:
+        """Run one non-streaming turn, offering ``tools`` for the model to call."""
 
 
 class GroqStreamingLLM:
@@ -60,6 +83,25 @@ class GroqStreamingLLM:
                 text = chunk.choices[0].delta.content
                 if text:
                     yield text
+
+    async def complete_turn(self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]) -> LLMTurn:
+        # Non-streaming: tool-calling turns need the full message before the
+        # agent loop can decide whether to run a tool or hand back text.
+        from openai import AsyncOpenAI
+
+        async with AsyncOpenAI(api_key=self._api_key, base_url=GROQ_BASE_URL) as client:
+            response = await client.chat.completions.create(
+                model=self._model,
+                messages=messages,
+                tools=tools or None,
+                tool_choice="auto" if tools else None,
+            )
+        message = response.choices[0].message
+        tool_calls = tuple(
+            LLMToolCall(id=call.id, name=call.function.name, arguments=call.function.arguments or "{}")
+            for call in (message.tool_calls or [])
+        )
+        return LLMTurn(content=message.content, tool_calls=tool_calls)
 
 
 class AnthropicStreamingLLM:

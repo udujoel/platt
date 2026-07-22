@@ -33,6 +33,8 @@ from app.services.onboarding import (
     repository_tool_definitions,
     trace_module,
 )
+from app.tools.executor import ToolExecutor
+from app.tools.registry import DEFAULT_REGISTRY, JOB_ALLOWLISTS
 
 router = APIRouter(prefix="/onboarding", tags=["onboarding"])
 REPOSITORY_REVIEW_PLAN_PROMPT = "Prepare a read-only repository review plan."
@@ -86,6 +88,14 @@ async def chat_about_onboarded_repository(
     persistence.record_job(job_id=job_id, prompt=chat_request.prompt)
     persistence.record_audit_entry(job_id=job_id, tool="onboarding_chat", action="create_job", outcome="accepted")
     await event_bus.publish(JobCreatedEvent(job_id=job_id, prompt=chat_request.prompt))
+    tool_executor = ToolExecutor(
+        DEFAULT_REGISTRY,
+        persistence,
+        JOB_ALLOWLISTS["onboarding_chat"],
+        job_id=job_id,
+        event_bus=event_bus,
+        resources={"onboarding_record": record},
+    )
     create_background_task(
         request.app,
         stream_chat_job(
@@ -94,6 +104,8 @@ async def chat_about_onboarded_repository(
             llm=create_llm_from_environment(),
             prompt=chat_request.prompt,
             system_prompt=onboarding_system_prompt(record),
+            tool_executor=tool_executor,
+            tool_names=tuple(JOB_ALLOWLISTS["onboarding_chat"]),
         ),
     )
     return ChatResponse(job_id=job_id)
