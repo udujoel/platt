@@ -1,10 +1,22 @@
 import React from "react";
 import { useFrame } from "@react-three/fiber";
 import { useAnimations, useGLTF } from "@react-three/drei";
-import { MathUtils, type Group } from "three";
+import { MathUtils, type Group, type Object3D } from "three";
 import { getThreeStagePose } from "../three-stage-pose";
+import { amplitudeToJawRotation } from "../voice/amplitude-jaw";
 import { applyCrossfadePlan } from "./glb-character-actions";
 import type { CharacterHandle, PlattCharacterProps } from "./types";
+
+const JAW_BONE_NAME_PATTERN = /jaw/i;
+
+/** Finds the jaw bone if the glb rig has one named for it; absent on assets without a jaw bone. */
+function findJawBone(root: Object3D): Object3D | null {
+  let found: Object3D | null = null;
+  root.traverse((node) => {
+    if (!found && JAW_BONE_NAME_PATTERN.test(node.name)) found = node;
+  });
+  return found;
+}
 
 export const PLATT_GLB_PATH = "/platt.glb";
 
@@ -23,6 +35,8 @@ export const PlattCharacterGLB = React.forwardRef<CharacterHandle, PlattCharacte
   const { actions } = useAnimations(animations, rig);
   const currentClip = React.useRef(clip);
   const startedInitialClip = React.useRef(false);
+  const jawAmplitude = React.useRef(0);
+  const jawBone = React.useMemo(() => findJawBone(scene), [scene]);
 
   React.useEffect(() => {
     if (startedInitialClip.current) return;
@@ -39,6 +53,9 @@ export const PlattCharacterGLB = React.forwardRef<CharacterHandle, PlattCharacte
       playClip: (plan) => {
         currentClip.current = applyCrossfadePlan(actions, plan);
       },
+      setJawAmplitude: (amplitude) => {
+        jawAmplitude.current = amplitude;
+      },
     }),
     [actions],
   );
@@ -51,6 +68,9 @@ export const PlattCharacterGLB = React.forwardRef<CharacterHandle, PlattCharacte
       rig.current.position.x = MathUtils.damp(rig.current.position.x, targetX, 4, delta);
       rig.current.position.z = MathUtils.damp(rig.current.position.z, targetZ, 4, delta);
       rig.current.position.y = MathUtils.damp(rig.current.position.y, pose.y, 8, delta);
+    }
+    if (jawBone) {
+      jawBone.rotation.x = MathUtils.damp(jawBone.rotation.x, amplitudeToJawRotation(jawAmplitude.current), 20, delta);
     }
   });
 

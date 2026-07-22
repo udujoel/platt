@@ -2,6 +2,7 @@ import React from "react";
 import { useFrame } from "@react-three/fiber";
 import { MathUtils, type Group, type Mesh } from "three";
 import { getThreeStagePose } from "../three-stage-pose";
+import { amplitudeToJawRotation } from "../voice/amplitude-jaw";
 import type { CharacterHandle, PlattCharacterProps } from "./types";
 
 /**
@@ -14,9 +15,11 @@ export const ProceduralPlatt = React.forwardRef<CharacterHandle, PlattCharacterP
 ) {
   const rig = React.useRef<Group>(null);
   const head = React.useRef<Group>(null);
+  const jaw = React.useRef<Mesh>(null);
   const leftArm = React.useRef<Mesh>(null);
   const rightArm = React.useRef<Mesh>(null);
   const currentClip = React.useRef(clip);
+  const jawAmplitude = React.useRef(0);
 
   React.useEffect(() => {
     currentClip.current = clip;
@@ -30,6 +33,9 @@ export const ProceduralPlatt = React.forwardRef<CharacterHandle, PlattCharacterP
       },
       playClip: (plan) => {
         currentClip.current = plan.fadeInClip;
+      },
+      setJawAmplitude: (amplitude) => {
+        jawAmplitude.current = amplitude;
       },
     }),
     [],
@@ -46,6 +52,9 @@ export const ProceduralPlatt = React.forwardRef<CharacterHandle, PlattCharacterP
       rig.current.rotation.z = MathUtils.damp(rig.current.rotation.z, pose.bodyLean, 10, delta);
     }
     if (head.current) head.current.rotation.z = MathUtils.damp(head.current.rotation.z, pose.headTilt, 8, delta);
+    if (jaw.current) {
+      jaw.current.rotation.x = MathUtils.damp(jaw.current.rotation.x, amplitudeToJawRotation(jawAmplitude.current), 20, delta);
+    }
     if (leftArm.current) leftArm.current.rotation.z = MathUtils.damp(leftArm.current.rotation.z, pose.leftArm, 12, delta);
     if (rightArm.current) rightArm.current.rotation.z = MathUtils.damp(rightArm.current.rotation.z, pose.rightArm, 12, delta);
   });
@@ -60,6 +69,10 @@ export const ProceduralPlatt = React.forwardRef<CharacterHandle, PlattCharacterP
         <mesh position={[0, 0.25, 0.12]} castShadow>
           <boxGeometry args={[0.5, 0.14, 0.22]} />
           <meshStandardMaterial color="#263145" roughness={0.82} />
+        </mesh>
+        <mesh ref={jaw} position={[0, 0.1, 0.17]} castShadow>
+          <boxGeometry args={[0.18, 0.08, 0.08]} />
+          <meshStandardMaterial color="#8a5a3d" roughness={0.75} />
         </mesh>
       </group>
       <mesh position={[0, 0.28, 0]} castShadow>

@@ -23,6 +23,10 @@ import { closeActivePanel, toggleActivePanel } from "./panels/panel-visibility";
 import { ProvisionTimeline } from "./panels/ProvisionTimeline";
 import { deriveProvisionSteps, provisionStatusLabel, useProvisionStore } from "./panels/provision-store";
 import type { PlanEntry } from "./panels/provision-store";
+import { MicButton } from "./voice/MicButton";
+import { MuteToggle } from "./voice/MuteToggle";
+import { useSpeechSynthesis } from "./voice/use-speech-synthesis";
+import { useVoiceMuteStore } from "./voice/mute-store";
 
 const ThreeOfficeScene = React.lazy(() => import("./scene/ThreeOfficeScene").then(({ ThreeOfficeScene: Scene }) => ({ default: Scene })));
 
@@ -467,7 +471,10 @@ function Stage({
   const provisionEvents = useProvisionStore((store) => store.events);
   const provisionLabel = provisionStatusLabel(deriveProvisionSteps(provisionEvents));
   const [renderer, useFallback] = useStageRenderer();
-  const latestPlattMessage = [...messages].reverse().find((message) => message.author === "platt")?.text ?? "";
+  const latestPlattEntry = [...messages].reverse().find((message) => message.author === "platt") ?? null;
+  const latestPlattMessage = latestPlattEntry?.text ?? "";
+  const muted = useVoiceMuteStore((store) => store.muted);
+  useSpeechSynthesis({ state, muted, text: latestPlattMessage, messageId: latestPlattEntry?.id ?? null });
 
   return (
     <section className="stage" aria-label="Platt office stage">
@@ -476,6 +483,7 @@ function Stage({
         <span className={`connectionBadge ${connection}`}>{connection}</span>
         <span className={`readinessBadge ${readiness}`} aria-live="polite">backend {readiness}</span>
         <span className={`stageRendererBadge ${renderer}`}>{renderer === "three" ? "3D scene" : "2D fallback"}</span>
+        <MuteToggle />
       </div>
       <ProvisionTimeline lastEvent={lastEvent} />
       {renderer === "three" ? (
@@ -929,9 +937,8 @@ function ChatPanel({
     ...planEntries.map((plan) => ({ key: `p-${plan.id}`, createdAt: plan.createdAt, kind: "plan" as const, plan })),
   ].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
-  const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const text = draft.trim();
+  const sendMessage = async (rawText: string) => {
+    const text = rawText.trim();
     if (!text || busy) return;
 
     setBusy(true);
@@ -947,6 +954,11 @@ function ChatPanel({
     } finally {
       setBusy(false);
     }
+  };
+
+  const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    await sendMessage(draft);
   };
 
   const runStateCycle = async () => {
@@ -1009,6 +1021,7 @@ function ChatPanel({
             onChange={(event) => setDraft(event.target.value)}
             placeholder={onboardingRecord ? "Send through repository-aware chat" : "Send through backend /chat"}
           />
+          <MicButton disabled={busy} getDraft={() => draft} onDraftChange={setDraft} onAutoSend={sendMessage} />
           <button type="submit" aria-label="Send message" title="Send message" disabled={busy}>
             <SendHorizonal size={18} aria-hidden="true" />
           </button>
