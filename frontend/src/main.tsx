@@ -1,6 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { ChevronRight, CircleAlert, ClipboardList, Play, RefreshCw, SendHorizonal } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronUp, CircleAlert, ClipboardList, Play, RefreshCw, SendHorizonal } from "lucide-react";
 import { create } from "zustand";
 import "./styles.css";
 import { resolveBackendConfiguration } from "./backend-config";
@@ -20,6 +20,9 @@ import { KanbanPanel } from "./panels/KanbanPanel";
 import { DashboardPanel } from "./panels/DashboardPanel";
 import { ApprovalGate } from "./panels/ApprovalCard";
 import { closeActivePanel, toggleActivePanel } from "./panels/panel-visibility";
+import { ProvisionTimeline } from "./panels/ProvisionTimeline";
+import { deriveProvisionSteps, provisionStatusLabel, useProvisionStore } from "./panels/provision-store";
+import type { PlanEntry } from "./panels/provision-store";
 
 const ThreeOfficeScene = React.lazy(() => import("./scene/ThreeOfficeScene").then(({ ThreeOfficeScene: Scene }) => ({ default: Scene })));
 
@@ -86,6 +89,7 @@ type ChatMessage = {
   text: string;
   jobId?: string;
   streaming?: boolean;
+  createdAt: string;
 };
 
 type AuditEntry = {
@@ -186,6 +190,7 @@ const stateLabels: Record<PlattState, string> = {
 
 const createId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const formatTime = (value?: string) => (value ? new Date(value).toLocaleTimeString() : new Date().toLocaleTimeString());
+const nowIso = () => new Date().toISOString();
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -207,6 +212,7 @@ const useEventStore = create<EventStore>((set) => ({
       id: createId(),
       author: "platt",
       text: "Phase 1 interface ready. Connect the backend to stream live events.",
+      createdAt: nowIso(),
     },
   ],
   seenBackendEventIds: [],
@@ -226,7 +232,7 @@ const useEventStore = create<EventStore>((set) => ({
   addOperatorMessage: (text) =>
     set((current) => ({
       state: "listening",
-      messages: [...current.messages, { id: createId(), author: "operator", text }],
+      messages: [...current.messages, { id: createId(), author: "operator", text, createdAt: nowIso() }],
       events: [
         {
           id: createId(),
@@ -301,6 +307,7 @@ const useEventStore = create<EventStore>((set) => ({
               text: event.delta,
               jobId: event.job_id,
               streaming: !event.done,
+              createdAt: event.created_at,
             },
           ];
 
@@ -457,17 +464,20 @@ function Stage({
   const state = useEventStore((store) => store.state);
   const connection = useEventStore((store) => store.connection);
   const messages = useEventStore((store) => store.messages);
+  const provisionEvents = useProvisionStore((store) => store.events);
+  const provisionLabel = provisionStatusLabel(deriveProvisionSteps(provisionEvents));
   const [renderer, useFallback] = useStageRenderer();
   const latestPlattMessage = [...messages].reverse().find((message) => message.author === "platt")?.text ?? "";
 
   return (
     <section className="stage" aria-label="Platt office stage">
       <div className="stageHeader">
-        <StatusChip state={state} />
+        <StatusChip state={state} provisionLabel={provisionLabel} />
         <span className={`connectionBadge ${connection}`}>{connection}</span>
         <span className={`readinessBadge ${readiness}`} aria-live="polite">backend {readiness}</span>
         <span className={`stageRendererBadge ${renderer}`}>{renderer === "three" ? "3D scene" : "2D fallback"}</span>
       </div>
+      <ProvisionTimeline lastEvent={lastEvent} />
       {renderer === "three" ? (
         <ThreeOfficeSceneBoundary fallback={<OfficeScene state={state} speech={latestPlattMessage} />} onFailure={useFallback}>
           <React.Suspense fallback={<OfficeScene state={state} speech={latestPlattMessage} />}>
@@ -486,11 +496,12 @@ function Stage({
   );
 }
 
-function StatusChip({ state }: { state: PlattState }) {
+function StatusChip({ state, provisionLabel }: { state: PlattState; provisionLabel: string | null }) {
   return (
     <div className={`statusChip ${state}`} aria-live="polite">
       <span className="statusDot" />
       {stateLabels[state]}
+      {provisionLabel ? <span className="provisionLabel">· {provisionLabel}</span> : null}
     </div>
   );
 }
@@ -879,6 +890,24 @@ function JobEventSkeleton() {
   return <div className="skeletonStack eventSkeleton" aria-label="Loading job events"><span /><span /></div>;
 }
 
+function PlanBlock({ entry, onToggle }: { entry: PlanEntry; onToggle: () => void }) {
+  return (
+    <div className="message platt planBlock" key={entry.id}>
+      <span>Platt · Plan</span>
+      <button
+        type="button"
+        className="planBlockToggle"
+        onClick={onToggle}
+        aria-expanded={!entry.collapsed}
+      >
+        {entry.collapsed ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronUp size={14} aria-hidden="true" />}
+        {entry.collapsed ? "Show plan" : "Hide plan"}
+      </button>
+      {entry.collapsed ? null : <pre className="planBlockBody">{entry.summary}</pre>}
+    </div>
+  );
+}
+
 function ChatPanel({
   onJobAccepted,
   onboardingRecord,
@@ -890,8 +919,15 @@ function ChatPanel({
   const events = useEventStore((store) => store.events);
   const addOperatorMessage = useEventStore((store) => store.addOperatorMessage);
   const addLocalEvent = useEventStore((store) => store.addLocalEvent);
+  const planEntries = useProvisionStore((store) => store.planEntries);
+  const togglePlan = useProvisionStore((store) => store.togglePlan);
   const [draft, setDraft] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+
+  const timeline: Array<{ key: string; createdAt: string; kind: "message" | "plan"; message?: ChatMessage; plan?: PlanEntry }> = [
+    ...messages.map((message) => ({ key: `m-${message.id}`, createdAt: message.createdAt, kind: "message" as const, message })),
+    ...planEntries.map((plan) => ({ key: `p-${plan.id}`, createdAt: plan.createdAt, kind: "plan" as const, plan })),
+  ].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -934,15 +970,19 @@ function ChatPanel({
           </button>
         </header>
         <div className="messageList">
-          {messages.map((message) => (
-            <div className={`message ${message.author}`} key={message.id}>
-              <span>{message.author === "platt" ? "Platt" : "Operator"}</span>
-              <p>
-                {message.text}
-                {message.streaming ? <b className="cursor">|</b> : null}
-              </p>
-            </div>
-          ))}
+          {timeline.map((entry) =>
+            entry.kind === "plan" && entry.plan ? (
+              <PlanBlock key={entry.key} entry={entry.plan} onToggle={() => togglePlan(entry.plan!.id)} />
+            ) : entry.message ? (
+              <div className={`message ${entry.message.author}`} key={entry.key}>
+                <span>{entry.message.author === "platt" ? "Platt" : "Operator"}</span>
+                <p>
+                  {entry.message.text}
+                  {entry.message.streaming ? <b className="cursor">|</b> : null}
+                </p>
+              </div>
+            ) : null,
+          )}
         </div>
       </div>
 

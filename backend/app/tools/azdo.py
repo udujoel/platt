@@ -127,6 +127,69 @@ async def get_process_template(
     )
 
 
+# -- Branches / pushes -----------------------------------------------------------
+
+
+async def get_branch(
+    client: AzdoClient,
+    persistence: Persistence,
+    *,
+    repository_id: str,
+    branch_name: str,
+    job_id: UUID | None = None,
+    event_bus: EventBus | None = None,
+) -> dict[str, Any] | None:
+    return await _call(
+        client,
+        persistence,
+        event_bus=event_bus,
+        job_id=job_id,
+        action="get_branch",
+        request_fields={"repository_id": repository_id, "branch_name": branch_name},
+        result_summary=lambda r: f"found={r is not None}",
+        fn=lambda: client.get_branch(repository_id, branch_name),
+    )
+
+
+async def push_file(
+    client: AzdoClient,
+    persistence: Persistence,
+    *,
+    repository_id: str,
+    branch_name: str,
+    base_object_id: str,
+    file_path: str,
+    content: str,
+    change_type: str,
+    comment: str,
+    job_id: UUID | None = None,
+    event_bus: EventBus | None = None,
+) -> dict[str, Any]:
+    return await _call(
+        client,
+        persistence,
+        event_bus=event_bus,
+        job_id=job_id,
+        action="push_file",
+        request_fields={
+            "repository_id": repository_id,
+            "branch_name": branch_name,
+            "file_path": file_path,
+            "change_type": change_type,
+        },
+        result_summary=lambda r: f"push_id={r.get('pushId')}",
+        fn=lambda: client.push_file(
+            repository_id,
+            branch_name=branch_name,
+            base_object_id=base_object_id,
+            file_path=file_path,
+            content=content,
+            change_type=change_type,
+            comment=comment,
+        ),
+    )
+
+
 # -- Pull requests --------------------------------------------------------------
 
 

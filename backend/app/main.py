@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.background_tasks import cancel_background_tasks
 from app.event_bus import event_bus
 from app.persistence import Persistence
-from app.routers import approvals, audit, chat, dev, events, health, jobs, onboarding, sse, ws
+from app.routers import approvals, audit, chat, dev, events, health, jobs, onboarding, provision, sse, ws
 
 
 LOCAL_VITE_ORIGIN_REGEX = r"^http://(?:localhost|127\.0\.0\.1):517\d+$"
@@ -66,6 +66,12 @@ def create_app(
     app.state.persistence = persistence
     app.state.allowed_origin_regex = origin_regex
     app.state.allowed_origin_pattern = re.compile(origin_regex)
+    # Disposable plan->apply handoff scratch state (see app/routers/provision.py);
+    # the approval itself, not this dict, is the durable authorization record.
+    app.state.provision_jobs: dict[Any, dict[str, Any]] = {}
+    app.state.provision_repository_id = os.environ.get("PLATT_PROVISION_REPOSITORY_ID", "")
+    apply_pipeline_id = os.environ.get("PLATT_PROVISION_APPLY_PIPELINE_ID", "").strip()
+    app.state.provision_apply_pipeline_id = int(apply_pipeline_id) if apply_pipeline_id else None
     app.add_middleware(
         CORSMiddleware,
         allow_origin_regex=origin_regex,
@@ -82,6 +88,7 @@ def create_app(
     app.include_router(audit.router)
     app.include_router(onboarding.router)
     app.include_router(approvals.router)
+    app.include_router(provision.router)
     app.include_router(ws.router)
     return app
 

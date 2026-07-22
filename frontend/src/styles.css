@@ -1260,3 +1260,79 @@ input {
   .slideOverPanel { width: 100vw; }
   .kanbanColumns { grid-template-columns: 1fr; }
 }
+
+.provisionLabel {
+  color: rgba(244, 247, 251, 0.68);
+  font-weight: 600;
+  font-size: 0.82rem;
+}
+
+.provisionTimeline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid rgba(244, 247, 251, 0.14);
+  border-radius: 0.7rem;
+  background: rgba(16, 19, 26, 0.6);
+  list-style: none;
+}
+
+.provisionStep {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: rgba(244, 247, 251, 0.42);
+}
+
+.provisionStepDot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: rgba(244, 247, 251, 0.22);
+}
+
+.provisionStep.active { color: #ffd79b; }
+.provisionStep.active .provisionStepDot { background: #ffb454; box-shadow: 0 0 0 4px rgba(255, 180, 84, 0.16); }
+
+.provisionStep.complete { color: #99f6e4; }
+.provisionStep.complete .provisionStepDot { background: #2dd4bf; }
+
+.provisionStep.error { color: #fecaca; }
+.provisionStep.error .provisionStepDot { background: #f87171; box-shadow: 0 0 0 4px rgba(248, 113, 113, 0.16); }
+
+.planBlock { width: min(96%, 34rem); }
+
+.planBlockToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.3rem;
+  padding: 0.3rem 0.55rem;
+  border: 1px solid rgba(244, 247, 251, 0.18);
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.06);
+  color: #f4f7fb;
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.planBlockToggle:hover { border-color: rgba(139, 184, 255, 0.4); }
+
+.planBlockBody {
+  margin: 0.55rem 0 0;
+  padding: 0.7rem 0.8rem;
+  border-radius: 0.55rem;
+  background: rgba(10, 12, 17, 0.85);
+  color: #d9e6ff;
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-x: auto;
+}

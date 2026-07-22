@@ -142,6 +142,54 @@ class AzdoClient:
         url = f"{self._config.org_url}/_apis/projects/{self._config.project}"
         return await self._request("GET", url, params={"includeCapabilities": "true"})
 
+    # -- Branches / pushes -----------------------------------------------------
+
+    async def get_branch(self, repository_id: str, branch_name: str) -> dict[str, Any] | None:
+        """Return the ``refs/heads/<branch_name>`` ref object, or ``None`` if it doesn't exist yet."""
+        url = f"git/repositories/{repository_id}/refs"
+        response = await self._request("GET", url, params={"filter": f"heads/{branch_name}"})
+        full_name = f"refs/heads/{branch_name}"
+        for ref in response.get("value", []):
+            if ref.get("name") == full_name:
+                return ref
+        return None
+
+    async def push_file(
+        self,
+        repository_id: str,
+        *,
+        branch_name: str,
+        base_object_id: str,
+        file_path: str,
+        content: str,
+        change_type: str,
+        comment: str,
+    ) -> dict[str, Any]:
+        """Push one commit adding/editing a single file, fast-forwarding from ``base_object_id``.
+
+        ``base_object_id`` is the branch's current tip when pushing a follow-up
+        commit, or the base branch's tip when this push creates ``branch_name``
+        for the first time (Azure DevOps derives the new branch's parent from
+        the ref update's ``oldObjectId`` in that case).
+        """
+        url = f"git/repositories/{repository_id}/pushes"
+        body = {
+            "refUpdates": [{"name": f"refs/heads/{branch_name}", "oldObjectId": base_object_id}],
+            "commits": [
+                {
+                    "comment": comment,
+                    "changes": [
+                        {
+                            "changeType": change_type,
+                            "item": {"path": f"/{file_path.lstrip('/')}"},
+                            "newContent": {"content": content, "contentType": "rawtext"},
+                        }
+                    ],
+                }
+            ],
+        }
+        return await self._request("POST", url, json_body=body)
+
     # -- Pull requests --------------------------------------------------------
 
     async def create_pull_request(
