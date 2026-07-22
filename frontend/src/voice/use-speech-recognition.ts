@@ -1,4 +1,5 @@
 import React from "react";
+import { startRecognitionSafely } from "./start-recognition";
 import { applyTranscriptEvent } from "./transcript-input";
 import { getSpeechRecognitionCtor } from "./speech-support";
 
@@ -49,8 +50,14 @@ export function useSpeechRecognition({
 
     recognitionRef.current = recognition;
     draftRef.current = getDraft();
-    setListening(true);
-    recognition.start();
+
+    // start() can throw synchronously (e.g. InvalidStateError) — onerror only covers async
+    // failures, so a synchronous throw must roll back the ref/listening state itself.
+    if (startRecognitionSafely(recognition)) {
+      setListening(true);
+    } else {
+      recognitionRef.current = null;
+    }
   }, [ctor, getDraft, listening, onAutoSend, onDraftChange]);
 
   const toggle = React.useCallback(() => {
