@@ -668,12 +668,29 @@ def test_validate_generated_file_path_accepts_a_normal_relative_path() -> None:
     assert _validate_generated_file_path("modules/storage-account/main.tf") == "modules/storage-account/main.tf"
 
 
-def test_run_local_terraform_plan_refuses_to_write_outside_the_sandbox(tmp_path) -> None:
+def test_run_local_terraform_plan_refuses_to_write_outside_the_sandbox(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Deterministic regardless of whether this machine has terraform installed:
+    # force the "CLI not present" branch (true in CI and most dev envs) to prove
+    # the sandbox-escape guard fires unconditionally, before that short-circuit
+    # -- not only when terraform happens to be on PATH.
+    monkeypatch.setattr("app.provision.shutil.which", lambda name: None)
     config = make_config()
-    # Bypasses _validate_generated_file_path to exercise run_local_terraform_plan's
-    # own defense-in-depth check directly, as CodeRabbit's suggested fix requires.
-    with pytest.raises(ProvisionError, match="escapes the sandbox"):
+    with pytest.raises(ProvisionError, match="not a safe relative path"):
         run_local_terraform_plan("../escape.tf", "resource block", config)
+
+
+def test_run_local_terraform_plan_rejects_a_bad_path_before_the_terraform_cli_check(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Guards against a regression back to checking terraform-CLI presence
+    # first: shutil.which must never even be consulted for a malicious path.
+    def _fail_if_called(name: str) -> str | None:
+        raise AssertionError("shutil.which should not be reached before path validation")
+
+    monkeypatch.setattr("app.provision.shutil.which", _fail_if_called)
+    config = make_config()
+    with pytest.raises(ProvisionError, match="not a safe relative path"):
+        run_local_terraform_plan("/etc/passwd", "resource block", config)
 
 
 def test_plan_phase_self_repairs_away_from_a_malicious_file_path(persistence: Persistence) -> None:

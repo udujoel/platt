@@ -377,6 +377,15 @@ def run_local_terraform_plan(file_path: str, content: str, config: ProvisionConf
     environments), the step is cleanly simulated with an empty plan rather
     than failing the whole job.
     """
+    # Defense in depth: _generate_terraform already validates file_path before
+    # this is ever called in production, but this function is directly
+    # callable/testable with an arbitrary file_path, and the model controls
+    # it. This must run unconditionally, before the terraform-CLI-presence
+    # short-circuit below -- otherwise the guard is silently skipped whenever
+    # terraform isn't installed (true in CI and most dev environments), and a
+    # malicious ".."/absolute path would slip through the simulated-plan path.
+    _validate_generated_file_path(file_path)
+
     commit_sha = hashlib.sha256(content.encode("utf-8")).hexdigest()[:12]
     terraform_bin = shutil.which("terraform")
     if terraform_bin is None:
