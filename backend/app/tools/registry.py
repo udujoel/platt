@@ -71,12 +71,27 @@ REPO_READ_TOOLS: frozenset[str] = frozenset({"read_file", "glob", "grep"})
 AZDO_READ_TOOLS: frozenset[str] = frozenset(
     {"get_pr", "list_work_items", "get_wiki_page", "list_pipeline_runs", "get_pipeline_run"}
 )
+# Write-capable AzDO tools the provisioning job needs: Boards decomposition,
+# PR authoring, apply-pipeline triggering, and the wiki append at the end.
+PROVISION_TOOLS: frozenset[str] = frozenset(
+    {
+        "create_work_item",
+        "update_work_item_state",
+        "create_pr",
+        "get_pr",
+        "run_pipeline",
+        "get_pipeline_run",
+        "update_wiki_page",
+        "get_wiki_page",
+    }
+)
 
 # Named per-job allowlists (PRD 7.4): a Q&A/onboarding-chat job gets read-only
 # tools only. Add a new entry here rather than broadening an existing one.
 JOB_ALLOWLISTS: dict[str, frozenset[str]] = {
     "onboarding_chat": REPO_READ_TOOLS,
     "chat": AZDO_READ_TOOLS,
+    "provision": PROVISION_TOOLS,
 }
 
 
@@ -189,6 +204,94 @@ def build_default_registry() -> ToolRegistry:
                 },
             },
             _azdo_handler(azdo_tools.get_pipeline_run),
+        )
+    )
+
+    registry.register(
+        ToolDefinition(
+            "create_work_item",
+            "Create an Azure Boards work item (e.g. Feature, Task).",
+            {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["work_item_type", "title"],
+                "properties": {
+                    "work_item_type": {"type": "string", "minLength": 1, "maxLength": 64},
+                    "title": {"type": "string", "minLength": 1, "maxLength": 256},
+                    "fields": {"type": "object"},
+                },
+            },
+            _azdo_handler(azdo_tools.create_work_item),
+        )
+    )
+    registry.register(
+        ToolDefinition(
+            "update_work_item_state",
+            "Transition an Azure Boards work item to a new state.",
+            {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["work_item_id", "state"],
+                "properties": {
+                    "work_item_id": {"type": "integer", "minimum": 1},
+                    "state": {"type": "string", "minLength": 1, "maxLength": 64},
+                },
+            },
+            _azdo_handler(azdo_tools.update_work_item_state),
+        )
+    )
+    registry.register(
+        ToolDefinition(
+            "create_pr",
+            "Open an Azure DevOps pull request from a source branch onto a target branch.",
+            {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["repository_id", "source_branch", "target_branch", "title"],
+                "properties": {
+                    "repository_id": {"type": "string", "minLength": 1, "maxLength": 256},
+                    "source_branch": {"type": "string", "minLength": 1, "maxLength": 512},
+                    "target_branch": {"type": "string", "minLength": 1, "maxLength": 512},
+                    "title": {"type": "string", "minLength": 1, "maxLength": 256},
+                    "description": {"type": "string", "maxLength": 4000},
+                },
+            },
+            _azdo_handler(azdo_tools.create_pr),
+        )
+    )
+    registry.register(
+        ToolDefinition(
+            "run_pipeline",
+            "Trigger an Azure DevOps pipeline run, optionally on a given branch.",
+            {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["pipeline_id"],
+                "properties": {
+                    "pipeline_id": {"type": "integer", "minimum": 1},
+                    "branch": {"type": "string", "maxLength": 512},
+                    "variables": {"type": "object"},
+                },
+            },
+            _azdo_handler(azdo_tools.run_pipeline),
+        )
+    )
+    registry.register(
+        ToolDefinition(
+            "update_wiki_page",
+            "Create or update one Azure DevOps wiki page by path.",
+            {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["wiki_identifier", "path", "content"],
+                "properties": {
+                    "wiki_identifier": {"type": "string", "minLength": 1, "maxLength": 256},
+                    "path": {"type": "string", "minLength": 1, "maxLength": 1024},
+                    "content": {"type": "string", "maxLength": 100000},
+                    "version": {"type": "string", "maxLength": 256},
+                },
+            },
+            _azdo_handler(azdo_tools.update_wiki_page),
         )
     )
     return registry
