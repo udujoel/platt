@@ -6,6 +6,13 @@ describe("seededDashboardData", () => {
   it("is marked as seeded so the UI can label it", () => {
     expect(seededDashboardData.seeded).toBe(true);
   });
+
+  it("does not fabricate PR URLs for seeded pull requests, keeping them non-navigable sample data", () => {
+    expect(seededDashboardData.openPullRequests.length).toBeGreaterThan(0);
+    for (const pr of seededDashboardData.openPullRequests) {
+      expect(pr.url).toBeUndefined();
+    }
+  });
 });
 
 describe("averagePassRate", () => {

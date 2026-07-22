@@ -35,6 +35,16 @@ describe("applyApprovalResult", () => {
     const next = applyApprovalResult(entries, { approval_id: "appr-other", approved: true });
     expect(next[0].status).toBe("pending");
   });
+
+  it("clears a stale failed-submit error once the approval is resolved", () => {
+    const requested = applyApprovalRequired([], { approval_id: "appr-1", job_id: "job-1", summary: "Apply storage account" });
+    const withStaleError = requested.map((entry) => ({ ...entry, error: "Approval decision failed: 500" }));
+
+    const next = applyApprovalResult(withStaleError, { approval_id: "appr-1", approved: true });
+
+    expect(next[0].error).toBeNull();
+    expect(next[0].status).toBe("approved");
+  });
 });
 
 describe("postApprovalDecision", () => {

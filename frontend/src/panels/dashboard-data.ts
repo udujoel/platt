@@ -9,7 +9,8 @@ export type OpenPullRequest = {
   id: string;
   title: string;
   ageDays: number;
-  url: string;
+  /** Only set once a real collector supplies a PR from the configured org/project/repo; seeded entries stay linkless rather than pointing at a fabricated URL. */
+  url?: string;
 };
 
 export type VersionPosture = {
@@ -54,9 +55,9 @@ export const seededDashboardData: DashboardData = {
     },
   ],
   openPullRequests: [
-    { id: "pr-142", title: "Add storage account for onboarding docs", ageDays: 1, url: "https://dev.azure.com/_git/pr/142" },
-    { id: "pr-139", title: "Bump azurerm to ~> 4.10", ageDays: 4, url: "https://dev.azure.com/_git/pr/139" },
-    { id: "pr-131", title: "Widen sandbox vnet address space", ageDays: 9, url: "https://dev.azure.com/_git/pr/131" },
+    { id: "pr-142", title: "Add storage account for onboarding docs", ageDays: 1 },
+    { id: "pr-139", title: "Bump azurerm to ~> 4.10", ageDays: 4 },
+    { id: "pr-131", title: "Widen sandbox vnet address space", ageDays: 9 },
   ],
   versions: [
     { name: "azurerm provider", current: "4.4.0", latest: "4.10.2" },

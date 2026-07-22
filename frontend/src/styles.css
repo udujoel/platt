@@ -1206,6 +1206,7 @@ input {
 .openPrList, .versionList { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.45rem; }
 .openPrList li { display: flex; align-items: center; gap: 0.45rem; font-size: 0.8rem; }
 .openPrList a { color: #f4f7fb; text-decoration: none; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.openPrList .prTitleSample { color: rgba(244, 247, 251, 0.72); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: default; border-bottom: 1px dashed rgba(244, 247, 251, 0.28); }
 .openPrList span { color: rgba(244, 247, 251, 0.5); font-size: 0.72rem; white-space: nowrap; }
 
 .versionList li { display: flex; justify-content: space-between; font-size: 0.8rem; }

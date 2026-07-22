@@ -63,7 +63,11 @@ export function DashboardPanel({ open, onClose }: { open: boolean; onClose: () =
             {openPullRequests.map((pr) => (
               <li key={pr.id}>
                 <GitPullRequest size={14} aria-hidden="true" />
-                <a href={pr.url} target="_blank" rel="noreferrer">{pr.title}</a>
+                {pr.url ? (
+                  <a href={pr.url} target="_blank" rel="noreferrer">{pr.title}</a>
+                ) : (
+                  <span className="prTitleSample" title="Seeded sample data — not a real pull request">{pr.title}</span>
+                )}
                 <span>{formatAge(pr.ageDays)}</span>
               </li>
             ))}

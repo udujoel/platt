@@ -19,6 +19,7 @@ import type { RailPanel } from "./panels/IconRail";
 import { KanbanPanel } from "./panels/KanbanPanel";
 import { DashboardPanel } from "./panels/DashboardPanel";
 import { ApprovalGate } from "./panels/ApprovalCard";
+import { closeActivePanel, toggleActivePanel } from "./panels/panel-visibility";
 
 const ThreeOfficeScene = React.lazy(() => import("./scene/ThreeOfficeScene").then(({ ThreeOfficeScene: Scene }) => ({ default: Scene })));
 
@@ -445,18 +446,19 @@ function Stage({
   lastEvent,
   activePanel,
   onSelectPanel,
+  onClosePanel,
 }: {
   readiness: BackendReadiness;
   lastEvent: BackendEvent | null;
   activePanel: RailPanel | null;
   onSelectPanel: (panel: RailPanel) => void;
+  onClosePanel: (panel: RailPanel) => void;
 }) {
   const state = useEventStore((store) => store.state);
   const connection = useEventStore((store) => store.connection);
   const messages = useEventStore((store) => store.messages);
   const [renderer, useFallback] = useStageRenderer();
   const latestPlattMessage = [...messages].reverse().find((message) => message.author === "platt")?.text ?? "";
-  const closePanel = () => onSelectPanel(activePanel!);
 
   return (
     <section className="stage" aria-label="Platt office stage">
@@ -478,8 +480,8 @@ function Stage({
         <span>Live event projection</span>
       </div>
       <IconRail active={activePanel} onSelect={onSelectPanel} />
-      <KanbanPanel open={activePanel === "kanban"} onClose={closePanel} lastEvent={lastEvent} />
-      <DashboardPanel open={activePanel === "dashboard"} onClose={closePanel} />
+      <KanbanPanel open={activePanel === "kanban"} onClose={() => onClosePanel("kanban")} lastEvent={lastEvent} />
+      <DashboardPanel open={activePanel === "dashboard"} onClose={() => onClosePanel("dashboard")} />
     </section>
   );
 }
@@ -983,10 +985,8 @@ function ConnectedApp() {
   const [onboardingRecord, setOnboardingRecord] = React.useState<OnboardingRecord | null>(null);
   const [activePanel, setActivePanel] = React.useState<RailPanel | null>(null);
   const selectJob = React.useCallback((jobId: string) => setSelectedJobId(jobId), []);
-  const selectPanel = React.useCallback(
-    (panel: RailPanel) => setActivePanel((current) => (current === panel ? null : panel)),
-    [],
-  );
+  const selectPanel = React.useCallback((panel: RailPanel) => setActivePanel((current) => toggleActivePanel(current, panel)), []);
+  const closePanel = React.useCallback((panel: RailPanel) => setActivePanel((current) => closeActivePanel(current, panel)), []);
 
   return (
     <main className="appShell">
@@ -999,7 +999,13 @@ function ConnectedApp() {
         onPlanJobAccepted={selectJob}
         highlighted={activePanel === "audit"}
       />
-      <Stage readiness={readiness} lastEvent={lastEvent} activePanel={activePanel} onSelectPanel={selectPanel} />
+      <Stage
+        readiness={readiness}
+        lastEvent={lastEvent}
+        activePanel={activePanel}
+        onSelectPanel={selectPanel}
+        onClosePanel={closePanel}
+      />
       <div className="chatColumn">
         <ApprovalGate apiBaseUrl={apiBaseUrl} lastEvent={lastEvent} />
         <ChatPanel onJobAccepted={selectJob} onboardingRecord={onboardingRecord} />

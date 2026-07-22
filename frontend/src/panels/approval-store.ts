@@ -25,7 +25,9 @@ export function applyApprovalRequired(entries: ApprovalEntry[], event: ApprovalR
 
 export function applyApprovalResult(entries: ApprovalEntry[], event: ApprovalResultLike): ApprovalEntry[] {
   return entries.map((entry) =>
-    entry.id === event.approval_id ? { ...entry, status: event.approved ? "approved" : "rejected", deciding: false } : entry,
+    entry.id === event.approval_id
+      ? { ...entry, status: event.approved ? "approved" : "rejected", deciding: false, error: null }
+      : entry,
   );
 }
 
