@@ -7,7 +7,7 @@ import { isPebbleKickComplete, pebbleArcPosition, PEBBLE_ORIGIN, PEBBLE_TARGET }
 
 /** Small procedural carpet-grid texture so the floor reads as a warm low-poly surface, not a flat fill. */
 function useFloorTexture() {
-  return React.useMemo(() => {
+  const texture = React.useMemo(() => {
     const size = 128;
     const canvas = document.createElement("canvas");
     canvas.width = size;
@@ -19,12 +19,16 @@ function useFloorTexture() {
     ctx.strokeStyle = "rgba(255, 180, 84, 0.05)";
     ctx.lineWidth = 1;
     ctx.strokeRect(0.5, 0.5, size - 1, size - 1);
-    const texture = new CanvasTexture(canvas);
-    texture.wrapS = RepeatWrapping;
-    texture.wrapT = RepeatWrapping;
-    texture.repeat.set(10, 8);
-    return texture;
+    const created = new CanvasTexture(canvas);
+    created.wrapS = RepeatWrapping;
+    created.wrapT = RepeatWrapping;
+    created.repeat.set(10, 8);
+    return created;
   }, []);
+
+  React.useEffect(() => () => texture?.dispose(), [texture]);
+
+  return texture;
 }
 
 /** Floor plane: subtle carpet-grid texture, ContactShadows (drei) instead of real-time shadow maps per PRD 5.2/5.4. */

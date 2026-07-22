@@ -21,6 +21,11 @@ export function amplitudeToJawRotation(
   maxRotation: number = JAW_MAX_ROTATION,
   responseCurve: number = JAW_RESPONSE_CURVE,
 ): number {
+  if (!Number.isFinite(responseCurve) || responseCurve <= 0) {
+    // A zero/negative/non-finite exponent breaks the 0..1 easing (e.g. 0 ** 0 === 1 opens the
+    // jaw fully on silence), so reject it instead of silently mis-mapping amplitude to rotation.
+    throw new RangeError("responseCurve must be a finite positive number");
+  }
   const clamped = Math.min(1, Math.max(0, amplitude));
   const eased = clamped ** responseCurve;
   return JAW_REST_ROTATION + eased * (maxRotation - JAW_REST_ROTATION);

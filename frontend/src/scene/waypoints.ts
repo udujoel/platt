@@ -63,6 +63,19 @@ export function wanderEaseLambda(elapsedSinceLegStart: number, baseLambda = 3.2,
   return baseLambda * ramp;
 }
 
+/**
+ * Unwraps a new `Math.atan2`-derived heading (range `(-π, π]`) to the value nearest `previous`,
+ * so a `MathUtils.damp` toward the result always takes the shortest turn instead of occasionally
+ * spinning the long way around when a wander leg's heading straddles the ±π seam.
+ */
+export function unwrapFacingAngle(previous: number, target: number): number {
+  const twoPi = Math.PI * 2;
+  let delta = (target - previous) % twoPi;
+  if (delta > Math.PI) delta -= twoPi;
+  if (delta < -Math.PI) delta += twoPi;
+  return previous + delta;
+}
+
 /** Symmetric ease-in/ease-out envelope (0 -> 1 -> 0) over a 0..1 progress value. */
 function easeInOutEnvelope(progress: number): number {
   const t = Math.min(1, Math.max(0, progress));

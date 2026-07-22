@@ -55,6 +55,9 @@ export function ThreeOfficeScene({
   const setState = usePlattSceneStore((s) => s.setState);
   const setSpeech = usePlattSceneStore((s) => s.setSpeech);
   const setBoardColumns = usePlattSceneStore((s) => s.setBoardColumns);
+  // The bubble's role="status" live region must live outside the aria-hidden Canvas subtree
+  // (assistive tech ignores anything under aria-hidden), so Html portals its DOM node here.
+  const bubblePortalRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => setState(state), [state, setState]);
   React.useEffect(() => setSpeech(speech), [speech, setSpeech]);
@@ -64,6 +67,7 @@ export function ThreeOfficeScene({
 
   return (
     <div className="threeOfficeScene">
+      <div className="threeOfficeSceneOverlay" ref={bubblePortalRef} />
       <Canvas
         aria-hidden="true"
         camera={{ fov: 42, position: [0, 3.15, 7.6] }}
@@ -72,7 +76,7 @@ export function ThreeOfficeScene({
       >
         <WebGLContextLossGuard onContextLost={onContextLost} />
         <ThreeOfficeWorld state={state} />
-        <Bubble />
+        <Bubble portalTarget={bubblePortalRef} />
       </Canvas>
     </div>
   );

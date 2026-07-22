@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap");
+@import "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap";
 
 :root {
   /* Palette per PRD §6: deep slate bg, warm desk light, teal success, coral failure. */
@@ -6,8 +6,8 @@
   --platt-warm: #ffb454;
   --platt-teal: #2dd4bf;
   --platt-coral: #f87171;
-  --font-ui: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-ui: "Inter", ui-sans-serif, system-ui, -apple-system, "BlinkMacSystemFont", "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", "Menlo", monospace;
   --panel-transition: 160ms;
 
   color: #f4f7fb;
@@ -1149,6 +1149,7 @@ input {
 .stage { background: radial-gradient(circle at 72% 26%, rgba(255,180,84,.2), transparent 28rem), linear-gradient(140deg, #232a3a 0%, #14161e 68%, #0e0f14 100%); }
 .threeOfficeScene { position:absolute; inset:0; overflow:hidden; background:radial-gradient(circle at 72% 26%,rgba(255,180,84,.2),transparent 28rem),#14161e; }
 .threeOfficeScene canvas { display:block; width:100% !important; height:100% !important; }
+.threeOfficeSceneOverlay { position:absolute; inset:0; z-index:3; pointer-events:none; }
 .threeSpeechBubble { width:min(220px,30vw); padding:.7rem .85rem; border:1px solid rgba(244,247,251,.34); border-radius:13px 13px 13px 2px; background:rgba(14,19,28,.92); backdrop-filter:blur(10px); box-shadow:0 18px 40px rgba(0,0,0,.32); color:#f4f7fb; font-size:.78rem; line-height:1.35; animation:bubbleIn .2s ease-out; pointer-events:none; }
 .officeScene { position: absolute; inset: 0; overflow: hidden; perspective: 900px; }
 .officeScene::before { content: ""; position: absolute; inset: 0 0 29%; background: linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px), linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px); background-size: 52px 52px; mask-image: linear-gradient(#000, transparent); }

@@ -9,6 +9,7 @@ import {
   pickIdleGesture,
   pickNextWaypoint,
   shiftSwayOffset,
+  unwrapFacingAngle,
   wanderEaseLambda,
 } from "./waypoints";
 
@@ -63,6 +64,29 @@ describe("wanderEaseLambda", () => {
 
   it("clamps at the base lambda past rampSeconds", () => {
     expect(wanderEaseLambda(10, 3.2, 0.4)).toBe(3.2);
+  });
+});
+
+describe("unwrapFacingAngle", () => {
+  it("leaves the target unchanged when it's already close to the previous heading", () => {
+    expect(unwrapFacingAngle(0.1, 0.2)).toBeCloseTo(0.2);
+  });
+
+  it("takes the short way across the +/-pi seam instead of the long way around", () => {
+    // Previous heading is just past +pi (equivalent to just under -pi); the new atan2 reading
+    // lands just past -pi. The raw target is ~2*pi away even though the true turn is tiny.
+    const previous = Math.PI - 0.05;
+    const target = -Math.PI + 0.05;
+    const unwrapped = unwrapFacingAngle(previous, target);
+    expect(unwrapped).toBeCloseTo(Math.PI + 0.05);
+    expect(Math.abs(unwrapped - previous)).toBeLessThan(0.2);
+  });
+
+  it("unwraps a heading that has spun several full turns past the previous value", () => {
+    const previous = 7 * Math.PI;
+    const target = 0.1;
+    const unwrapped = unwrapFacingAngle(previous, target);
+    expect(Math.abs(unwrapped - previous)).toBeLessThanOrEqual(Math.PI);
   });
 });
 

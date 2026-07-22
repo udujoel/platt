@@ -32,4 +32,17 @@ describe("amplitudeToJawRotation", () => {
   it("honors a custom response curve", () => {
     expect(amplitudeToJawRotation(0.5, JAW_MAX_ROTATION, 1)).toBeCloseTo(JAW_MAX_ROTATION / 2, 5);
   });
+
+  it("rejects a zero response curve instead of opening the jaw fully on silence (0 ** 0 === 1)", () => {
+    expect(() => amplitudeToJawRotation(0, JAW_MAX_ROTATION, 0)).toThrow(RangeError);
+  });
+
+  it("rejects a negative response curve", () => {
+    expect(() => amplitudeToJawRotation(0.5, JAW_MAX_ROTATION, -1)).toThrow(RangeError);
+  });
+
+  it("rejects a non-finite response curve", () => {
+    expect(() => amplitudeToJawRotation(0.5, JAW_MAX_ROTATION, NaN)).toThrow(RangeError);
+    expect(() => amplitudeToJawRotation(0.5, JAW_MAX_ROTATION, Infinity)).toThrow(RangeError);
+  });
 });

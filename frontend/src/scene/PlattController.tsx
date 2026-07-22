@@ -1,7 +1,7 @@
 import React from "react";
 import { useFrame } from "@react-three/fiber";
 import { MathUtils } from "three";
-import type { ThreeStageState } from "../three-stage-pose";
+import { getThreeStagePose, type ThreeStageState } from "../three-stage-pose";
 import { usePlattSceneStore } from "./scene-store";
 import { PlattCharacter } from "./PlattCharacter";
 import { clipForState, selectCrossfade } from "./crossfade";
@@ -12,6 +12,7 @@ import {
   pickIdleGesture,
   pickNextWaypoint,
   shiftSwayOffset,
+  unwrapFacingAngle,
   wanderEaseLambda,
   type IdleGesture,
   type Waypoint,
@@ -33,6 +34,7 @@ export function PlattController() {
   const state = usePlattSceneStore((s) => s.state);
   const triggerPebbleKick = usePlattSceneStore((s) => s.triggerPebbleKick);
   const jawAmplitude = usePlattSceneStore((s) => s.jawAmplitude);
+  const setHeadAnchor = usePlattSceneStore((s) => s.setHeadAnchor);
 
   const characterRef = React.useRef<CharacterHandle>(null);
   const previousState = React.useRef<ThreeStageState | null>(null);
@@ -56,6 +58,13 @@ export function PlattController() {
     previousState.current = state;
   }, [state]);
 
+  // Don't leave a stale live anchor behind for Bubble.tsx to track forever if this controller
+  // unmounts mid-wander (e.g. the character subtree remounts on an error boundary reset).
+  React.useEffect(() => {
+    const setHeadAnchorOnUnmount = setHeadAnchor;
+    return () => setHeadAnchorOnUnmount(null);
+  }, [setHeadAnchor]);
+
   useFrame(({ clock }, delta) => {
     characterRef.current?.setJawAmplitude(jawAmplitude);
     const elapsed = clock.getElapsedTime();
@@ -63,8 +72,20 @@ export function PlattController() {
     if (state !== "idle") {
       currentWaypoint.current = null;
       dwellStartedAt.current = null;
+      // Not idle-wandering: the rig sits at the canned per-state pose, which Bubble.tsx already
+      // approximates exactly via getThreeStagePose, so clear the live anchor rather than publish
+      // a stale idle-wander position.
+      setHeadAnchor(null);
       return;
     }
+
+    // Idle rig height stays pinned to the same constant across the whole idle wander (no bounce,
+    // unlike e.g. celebrating), so this is safe to compute once per frame and reuse below.
+    const idleY = getThreeStagePose("idle", elapsed).y;
+    const publishHeadAnchor = () => {
+      const [ax, , az] = wanderAnchor.current;
+      setHeadAnchor([ax, idleY, az]);
+    };
 
     if (!currentWaypoint.current) {
       currentWaypoint.current = pickNextWaypoint(null, IDLE_WAYPOINTS);
@@ -74,6 +95,7 @@ export function PlattController() {
     if (dwellStartedAt.current !== null) {
       const progress = dwellSeconds.current > 0 ? (elapsed - dwellStartedAt.current) / dwellSeconds.current : 1;
       applyDwellGesture(dwellGesture.current, progress, dwellOrigin.current, dwellBaseFacing.current, wanderAnchor, facing);
+      publishHeadAnchor();
       if (elapsed - dwellStartedAt.current >= dwellSeconds.current) {
         dwellStartedAt.current = null;
         currentWaypoint.current = pickNextWaypoint(currentWaypoint.current.id, IDLE_WAYPOINTS);
@@ -98,15 +120,17 @@ export function PlattController() {
       dwellGesture.current = pickIdleGesture();
       dwellSeconds.current = pickDwellSeconds();
       dwellStartedAt.current = elapsed;
+      publishHeadAnchor();
       return;
     }
 
     if (distance > FACING_UPDATE_MIN_DISTANCE) {
-      facing.current = Math.atan2(dx, dz);
+      facing.current = unwrapFacingAngle(facing.current, Math.atan2(dx, dz));
     }
 
     const lambda = wanderEaseLambda(elapsed - legStartedAt.current);
     wanderAnchor.current = [MathUtils.damp(cx, wx, lambda, delta), cy, MathUtils.damp(cz, wz, lambda, delta)];
+    publishHeadAnchor();
   });
 
   return (

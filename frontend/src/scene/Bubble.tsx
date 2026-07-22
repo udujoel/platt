@@ -14,9 +14,10 @@ const HEAD_OFFSET_Y = 1.55;
  * frame (per PRD 5.3), streaming the current assistant text (truncated per scene/speech-bubble.ts),
  * hiding BUBBLE_HIDE_DELAY_MS after the message completes. Full text always lives in the chat panel.
  */
-export function Bubble() {
+export function Bubble({ portalTarget }: { portalTarget?: React.RefObject<HTMLElement | null> } = {}) {
   const state = usePlattSceneStore((s) => s.state);
   const speech = usePlattSceneStore((s) => s.speech);
+  const headAnchor = usePlattSceneStore((s) => s.headAnchor);
   const groupRef = React.useRef<Group>(null);
   const wasTalking = React.useRef(false);
   const [completedAt, setCompletedAt] = React.useState<number | null>(null);
@@ -24,6 +25,14 @@ export function Bubble() {
 
   useFrame(({ clock }) => {
     if (!groupRef.current) return;
+    // Prefer the rig's live world anchor (set by PlattController, e.g. during idle wander) so the
+    // bubble tracks Platt even off the canned pose; fall back to the pose approximation until that
+    // is published for the current state.
+    if (headAnchor) {
+      const [ax, ay, az] = headAnchor;
+      groupRef.current.position.set(ax, ay + HEAD_OFFSET_Y, az + 0.2);
+      return;
+    }
     const pose = getThreeStagePose(state, clock.getElapsedTime());
     groupRef.current.position.set(pose.x, pose.y + HEAD_OFFSET_Y, 0.2);
   });
@@ -53,7 +62,13 @@ export function Bubble() {
   return (
     <group ref={groupRef}>
       {visible ? (
-        <Html center distanceFactor={7} occlude={false} zIndexRange={[20, 0]}>
+        <Html
+          center
+          distanceFactor={7}
+          occlude={false}
+          zIndexRange={[20, 0]}
+          portal={portalTarget as React.RefObject<HTMLElement> | undefined}
+        >
           <div className="threeSpeechBubble" role="status" aria-live="polite" aria-atomic="true">
             {truncateBubbleText(speech)}
           </div>
