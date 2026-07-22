@@ -479,12 +479,12 @@ function Stage({
   return (
     <section className="stage" aria-label="Platt office stage">
       <div className="stageHeader">
-        <StatusChip state={state} provisionLabel={provisionLabel} />
         <span className={`connectionBadge ${connection}`}>{connection}</span>
         <span className={`readinessBadge ${readiness}`} aria-live="polite">backend {readiness}</span>
         <span className={`stageRendererBadge ${renderer}`}>{renderer === "three" ? "3D scene" : "2D fallback"}</span>
         <MuteToggle />
       </div>
+      <span className="sandboxBadge" aria-label="Sandbox environment">Sandbox</span>
       <ProvisionTimeline lastEvent={lastEvent} />
       {renderer === "three" ? (
         <ThreeOfficeSceneBoundary fallback={<OfficeScene state={state} speech={latestPlattMessage} />} onFailure={useFallback}>
@@ -494,8 +494,8 @@ function Stage({
         </ThreeOfficeSceneBoundary>
       ) : <OfficeScene state={state} speech={latestPlattMessage} />}
       <div className="stageFooter">
-        <span>Platt · embodied DevOps agent</span>
-        <span>Live event projection</span>
+        <StatusChip state={state} provisionLabel={provisionLabel} />
+        <span>Platt · embodied DevOps agent · Live event projection</span>
       </div>
       <IconRail active={activePanel} onSelect={onSelectPanel} />
       <KanbanPanel open={activePanel === "kanban"} onClose={() => onClosePanel("kanban")} lastEvent={lastEvent} />

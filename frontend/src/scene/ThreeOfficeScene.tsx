@@ -27,7 +27,7 @@ function ThreeOfficeWorld({ state }: { state: ThreeStageState }) {
       <color attach="background" args={["#111720"]} />
       <fog attach="fog" args={["#111720", 7, 14]} />
       <ambientLight intensity={1.15} />
-      <directionalLight position={[3, 6, 5]} intensity={2.4} castShadow />
+      <directionalLight position={[3, 6, 5]} intensity={2.4} />
       <pointLight
         position={[1.45, 2, 0.8]}
         color={state === "concerned" ? "#f87171" : "#ffb454"}
@@ -69,12 +69,11 @@ export function ThreeOfficeScene({
         camera={{ fov: 42, position: [0, 3.15, 7.6] }}
         dpr={[1, 1.5]}
         gl={{ antialias: true, powerPreference: "low-power" }}
-        shadows
       >
         <WebGLContextLossGuard onContextLost={onContextLost} />
         <ThreeOfficeWorld state={state} />
+        <Bubble />
       </Canvas>
-      <Bubble />
     </div>
   );
 }

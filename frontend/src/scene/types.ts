@@ -41,4 +41,6 @@ export type PlattCharacterProps = {
   clip: PlattClipName;
   /** When set, overrides the pose-driven x/z anchor (used for idle wander). Mutated per-frame without re-render. */
   anchor?: React.MutableRefObject<Vector3Tuple>;
+  /** When set, overrides the rig's y-axis rotation target (radians, used for idle wander turning-to-face). Mutated per-frame without re-render. */
+  facing?: React.MutableRefObject<number>;
 };

@@ -25,3 +25,58 @@ export function pickNextWaypoint(
   const index = Math.min(pool.length - 1, Math.floor(rng() * pool.length));
   return pool[index];
 }
+
+export const IDLE_DWELL_MIN_SECONDS = 1.2;
+export const IDLE_DWELL_MAX_SECONDS = 3.6;
+
+/**
+ * Randomized pause length after arriving at a waypoint (pure; caller supplies rng for
+ * determinism), so idle wander reads as someone pausing to look around rather than a
+ * metronome ticking between fixed stops.
+ */
+export function pickDwellSeconds(
+  rng: () => number = Math.random,
+  min: number = IDLE_DWELL_MIN_SECONDS,
+  max: number = IDLE_DWELL_MAX_SECONDS,
+): number {
+  return min + rng() * (max - min);
+}
+
+export type IdleGesture = "none" | "glance-left" | "glance-right" | "shift" | "stretch";
+
+/** Weighted so "none" (just standing) is still the most common outcome, gestures are a garnish. */
+const IDLE_GESTURES: IdleGesture[] = ["none", "none", "none", "glance-left", "glance-right", "shift", "stretch"];
+
+/** Picks the idle gesture to play during a waypoint dwell (pure; caller supplies rng for determinism). */
+export function pickIdleGesture(rng: () => number = Math.random): IdleGesture {
+  const index = Math.min(IDLE_GESTURES.length - 1, Math.floor(rng() * IDLE_GESTURES.length));
+  return IDLE_GESTURES[index];
+}
+
+/**
+ * Damp lambda for a wander leg: ramps up from a stand-still over `rampSeconds` so a fresh leg
+ * eases into motion, then holds `baseLambda` for the rest of the leg. `MathUtils.damp` already
+ * gives exponential ease-out as the anchor nears its target, so this only needs to cover ease-in.
+ */
+export function wanderEaseLambda(elapsedSinceLegStart: number, baseLambda = 3.2, rampSeconds = 0.4): number {
+  const ramp = Math.min(1, Math.max(0, elapsedSinceLegStart / rampSeconds));
+  return baseLambda * ramp;
+}
+
+/** Symmetric ease-in/ease-out envelope (0 -> 1 -> 0) over a 0..1 progress value. */
+function easeInOutEnvelope(progress: number): number {
+  const t = Math.min(1, Math.max(0, progress));
+  return Math.sin(Math.PI * t);
+}
+
+/** Temporary head/facing offset (radians) for a glance gesture; peaks mid-dwell, settles back to 0. */
+export function glanceFacingOffset(progress: number, magnitude = 0.55): number {
+  return magnitude * easeInOutEnvelope(progress);
+}
+
+/** Small weight-shift/stretch sway (meters) added on top of the dwell anchor position. */
+export function shiftSwayOffset(progress: number, magnitude = 0.05): Vector3Tuple {
+  const envelope = easeInOutEnvelope(progress);
+  const t = Math.min(1, Math.max(0, progress));
+  return [Math.sin(t * Math.PI * 2) * magnitude * envelope, 0, Math.cos(t * Math.PI * 2) * magnitude * envelope * 0.4];
+}

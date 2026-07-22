@@ -27,7 +27,7 @@ export const PLATT_GLB_PATH = "/platt.glb";
  * handled by the `Suspense`/`CharacterErrorBoundary` pair in `PlattCharacter.tsx`, not here.
  */
 export const PlattCharacterGLB = React.forwardRef<CharacterHandle, PlattCharacterProps>(function PlattCharacterGLB(
-  { state, clip, anchor },
+  { state, clip, anchor, facing },
   ref,
 ) {
   const rig = React.useRef<Group>(null);
@@ -68,6 +68,9 @@ export const PlattCharacterGLB = React.forwardRef<CharacterHandle, PlattCharacte
       rig.current.position.x = MathUtils.damp(rig.current.position.x, targetX, 4, delta);
       rig.current.position.z = MathUtils.damp(rig.current.position.z, targetZ, 4, delta);
       rig.current.position.y = MathUtils.damp(rig.current.position.y, pose.y, 8, delta);
+      if (facing) {
+        rig.current.rotation.y = MathUtils.damp(rig.current.rotation.y, facing.current, 6, delta);
+      }
     }
     if (jawBone) {
       jawBone.rotation.x = MathUtils.damp(jawBone.rotation.x, amplitudeToJawRotation(jawAmplitude.current), 20, delta);
