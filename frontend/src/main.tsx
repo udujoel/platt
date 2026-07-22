@@ -1021,7 +1021,7 @@ function ChatPanel({
             onChange={(event) => setDraft(event.target.value)}
             placeholder={onboardingRecord ? "Send through repository-aware chat" : "Send through backend /chat"}
           />
-          <MicButton disabled={busy} onDraftChange={setDraft} onAutoSend={sendMessage} />
+          <MicButton disabled={busy} getDraft={() => draft} onDraftChange={setDraft} onAutoSend={sendMessage} />
           <button type="submit" aria-label="Send message" title="Send message" disabled={busy}>
             <SendHorizonal size={18} aria-hidden="true" />
           </button>

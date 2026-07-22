@@ -1,5 +1,6 @@
 import asyncio
 import json
+import threading
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
@@ -364,5 +365,45 @@ def test_bump_flow_raises_when_target_branch_is_missing(persistence: Persistence
                 http_fetcher=make_fetcher("5.2.0"),
                 terraform_runner=fake_plan(),
             )
+
+    asyncio.run(_run())
+
+
+# -- terraform plan runs off the event loop ----------------------------------------------
+
+
+def test_terraform_plan_runs_off_the_event_loop_via_asyncio_to_thread(persistence: Persistence) -> None:
+    """`terraform_runner` shells out via blocking subprocess.run; it must not
+    run inline on the event loop, or a slow Terraform run would stall every
+    other in-flight request sharing this process's asyncio loop."""
+
+    async def _run() -> None:
+        bus = CapturingBus()
+        job_id = uuid4()
+        executor = make_executor(persistence, bus, job_id)
+        llm = ScriptedTurnLLM(ASSESSMENT_REPLY)
+        event_loop_thread_id = threading.get_ident()
+        observed_thread_id: dict[str, int] = {}
+
+        def runner(file_path: str, content: str, config: Any) -> TerraformPlanResult:
+            del file_path, content, config
+            observed_thread_id["id"] = threading.get_ident()
+            return TerraformPlanResult(
+                plan_json={"resource_changes": []}, plan_hash="hash-1", commit_sha="sha-1", simulated=True
+            )
+
+        result = await run_version_bump_check(
+            job_id=job_id,
+            bus=bus,
+            persistence=persistence,
+            tool_executor=executor,
+            llm=llm,
+            config=make_config(),
+            http_fetcher=make_fetcher("5.2.0"),
+            terraform_runner=runner,
+        )
+
+        assert result.bumped is True
+        assert observed_thread_id["id"] != event_loop_thread_id
 
     asyncio.run(_run())

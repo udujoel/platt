@@ -16,6 +16,7 @@ live Azure credentials. Every AzDO write goes through the shared
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from dataclasses import dataclass
@@ -337,7 +338,11 @@ async def run_version_bump_check(
     await _push_version_bump(tool_executor, config, branch_name=branch_name, content=new_content)
 
     await bus.publish(AgentStateEvent(job_id=job_id, state=PlattState.WORKING, label="Running local terraform plan"))
-    plan = terraform_runner(
+    # terraform_runner shells out via blocking subprocess.run (fmt/validate/plan);
+    # run it off the event loop so a slow Terraform run doesn't stall other
+    # in-flight requests sharing this process's asyncio loop.
+    plan = await asyncio.to_thread(
+        terraform_runner,
         VERSIONS_TF_FILE,
         new_content,
         ProvisionConfig(

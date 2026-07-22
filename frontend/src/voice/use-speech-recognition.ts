@@ -8,9 +8,12 @@ import { getSpeechRecognitionCtor } from "./speech-support";
  * and is unit tested there; this hook only owns the imperative browser object and its lifecycle.
  */
 export function useSpeechRecognition({
+  getDraft,
   onDraftChange,
   onAutoSend,
 }: {
+  /** Reads the composer's current draft so starting recognition doesn't clobber text already typed. */
+  getDraft: () => string;
   onDraftChange: (draft: string) => void;
   onAutoSend: (text: string) => void;
 }) {
@@ -45,10 +48,10 @@ export function useSpeechRecognition({
     recognition.onerror = () => setListening(false);
 
     recognitionRef.current = recognition;
-    draftRef.current = "";
+    draftRef.current = getDraft();
     setListening(true);
     recognition.start();
-  }, [ctor, listening, onAutoSend, onDraftChange]);
+  }, [ctor, getDraft, listening, onAutoSend, onDraftChange]);
 
   const toggle = React.useCallback(() => {
     if (listening) stop();

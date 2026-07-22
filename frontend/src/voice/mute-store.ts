@@ -25,8 +25,15 @@ export function writePersistedMute(storage: MuteStorage, muted: boolean): void {
   }
 }
 
+const noopStorage: MuteStorage = { getItem: () => null, setItem: () => undefined };
+
+/** `window.localStorage` can throw (sandboxed iframes, storage-blocked contexts) just from the getter, not only on use. */
 function safeLocalStorage(): MuteStorage {
-  return typeof window !== "undefined" && window.localStorage ? window.localStorage : { getItem: () => null, setItem: () => undefined };
+  try {
+    return typeof window !== "undefined" && window.localStorage ? window.localStorage : noopStorage;
+  } catch {
+    return noopStorage;
+  }
 }
 
 type VoiceMuteState = {

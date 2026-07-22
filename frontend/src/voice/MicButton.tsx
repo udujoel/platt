@@ -9,14 +9,17 @@ import { useSpeechRecognition } from "./use-speech-recognition";
  */
 export function MicButton({
   disabled,
+  getDraft,
   onDraftChange,
   onAutoSend,
 }: {
   disabled?: boolean;
+  /** Reads the composer's current draft so starting recognition doesn't clobber text already typed. */
+  getDraft: () => string;
   onDraftChange: (draft: string) => void;
   onAutoSend: (text: string) => void;
 }) {
-  const { supported, listening, toggle } = useSpeechRecognition({ onDraftChange, onAutoSend });
+  const { supported, listening, toggle } = useSpeechRecognition({ getDraft, onDraftChange, onAutoSend });
 
   if (!supported) return null;
 

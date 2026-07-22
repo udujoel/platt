@@ -21,7 +21,7 @@ from app.background_tasks import create_background_task
 from app.clients.azdo import AzdoClient, AzdoNotConfiguredError
 from app.event_bus import event_bus
 from app.llm import create_llm_from_environment
-from app.models import ChatResponse
+from app.models import AgentStateEvent, ChatResponse, PlattState
 from app.tools.executor import ToolExecutor
 from app.tools.registry import DEFAULT_REGISTRY, JOB_ALLOWLISTS
 from app.version_bump import VersionBumpConfig, run_version_bump_check
@@ -87,6 +87,11 @@ async def trigger_version_bump(request: Request) -> ChatResponse:
                 llm=create_llm_from_environment(),
                 config=config,
             )
+        except Exception:
+            await event_bus.publish(
+                AgentStateEvent(job_id=job_id, state=PlattState.CONCERNED, label="Version-bump check failed")
+            )
+            raise
         finally:
             await azdo_client.aclose()
 
