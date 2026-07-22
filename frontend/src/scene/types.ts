@@ -32,6 +32,8 @@ export type CrossfadePlan = {
 export type CharacterHandle = {
   readonly currentClip: PlattClipName;
   playClip: (plan: CrossfadePlan) => void;
+  /** Raw 0..1 amplitude signal (PRD F8); the rig maps it to a jaw rotation each frame. */
+  setJawAmplitude: (amplitude: number) => void;
 };
 
 export type PlattCharacterProps = {

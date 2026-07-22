@@ -30,6 +30,8 @@ class EventType(StrEnum):
     APPLY_RESULT = "apply_result"
     AUDIT_ENTRY = "audit_entry"
     DASHBOARD_REFRESH = "dashboard_refresh"
+    RELEASE_DETECTED = "release_detected"
+    SIGNIFICANCE_ASSESSED = "significance_assessed"
 
 
 class EventBase(BaseModel):
@@ -115,6 +117,20 @@ class DashboardRefreshEvent(EventBase):
     metrics: dict[str, int | float | str]
 
 
+class ReleaseDetectedEvent(JobEvent):
+    type: Literal[EventType.RELEASE_DETECTED] = EventType.RELEASE_DETECTED
+    dependency: str
+    current_constraint: str
+    latest_version: str
+    bump_needed: bool
+
+
+class SignificanceAssessedEvent(JobEvent):
+    type: Literal[EventType.SIGNIFICANCE_ASSESSED] = EventType.SIGNIFICANCE_ASSESSED
+    recommendation: str
+    reasoning: str
+
+
 Event = Annotated[
     Union[
         AgentStateEvent,
@@ -128,6 +144,8 @@ Event = Annotated[
         ApplyResultEvent,
         AuditEntryEvent,
         DashboardRefreshEvent,
+        ReleaseDetectedEvent,
+        SignificanceAssessedEvent,
     ],
     Field(discriminator="type"),
 ]

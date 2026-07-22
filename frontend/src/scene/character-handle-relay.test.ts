@@ -7,6 +7,7 @@ function mockCharacterHandle(clip: CharacterHandle["currentClip"]): CharacterHan
   return {
     currentClip: clip,
     playClip: vi.fn(),
+    setJawAmplitude: vi.fn(),
   };
 }
 
@@ -76,5 +77,28 @@ describe("createCharacterHandleRelay", () => {
     attach(null);
 
     expect(handle.currentClip).toBe("walk");
+  });
+
+  it("forwards setJawAmplitude to the currently attached instance", () => {
+    const { handle, attach } = createCharacterHandleRelay("idle");
+    const glb = mockCharacterHandle("idle");
+    attach(glb);
+
+    handle.setJawAmplitude(0.7);
+
+    expect(glb.setJawAmplitude).toHaveBeenCalledWith(0.7);
+  });
+
+  it("replays the last jaw amplitude onto a fresh instance after a swap", () => {
+    const { handle, attach } = createCharacterHandleRelay("idle");
+    const procedural = mockCharacterHandle("idle");
+    attach(procedural);
+    handle.setJawAmplitude(0.4);
+
+    attach(null);
+    const glb = mockCharacterHandle("idle");
+    attach(glb);
+
+    expect(glb.setJawAmplitude).toHaveBeenCalledWith(0.4);
   });
 });

@@ -12,6 +12,7 @@ export function createCharacterHandleRelay(initialClip: PlattClipName) {
   let active: CharacterHandle | null = null;
   let lastPlan: CrossfadePlan | null = null;
   let lastClip: PlattClipName = initialClip;
+  let lastJawAmplitude = 0;
 
   const handle: CharacterHandle = {
     get currentClip() {
@@ -22,12 +23,19 @@ export function createCharacterHandleRelay(initialClip: PlattClipName) {
       lastClip = plan.fadeInClip;
       active?.playClip(plan);
     },
+    setJawAmplitude(amplitude: number) {
+      lastJawAmplitude = amplitude;
+      active?.setJawAmplitude(amplitude);
+    },
   };
 
   function attach(next: CharacterHandle | null) {
     active = next;
     if (next && lastPlan) {
       next.playClip(lastPlan);
+    }
+    if (next) {
+      next.setJawAmplitude(lastJawAmplitude);
     }
   }
 

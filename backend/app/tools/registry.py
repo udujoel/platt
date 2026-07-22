@@ -87,6 +87,9 @@ PROVISION_TOOLS: frozenset[str] = frozenset(
         "get_wiki_page",
     }
 )
+# Write-capable AzDO tools the version-bump job needs: branch/commit/PR
+# authoring only -- no work items, pipelines, or wiki writes.
+VERSION_BUMP_TOOLS: frozenset[str] = frozenset({"get_branch", "push_file", "create_pr", "get_pr"})
 
 # Named per-job allowlists (PRD 7.4): a Q&A/onboarding-chat job gets read-only
 # tools only. Add a new entry here rather than broadening an existing one.
@@ -94,6 +97,7 @@ JOB_ALLOWLISTS: dict[str, frozenset[str]] = {
     "onboarding_chat": REPO_READ_TOOLS,
     "chat": AZDO_READ_TOOLS,
     "provision": PROVISION_TOOLS,
+    "version_bump": VERSION_BUMP_TOOLS,
 }
 
 

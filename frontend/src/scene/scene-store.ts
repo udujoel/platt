@@ -8,10 +8,13 @@ export type PlattSceneState = {
   speech: string;
   boardColumns: BoardColumns;
   pebbleKickAt: number | null;
+  /** Raw 0..1 TTS amplitude (PRD F8), read by `PlattController` each frame and handed to the character rig. */
+  jawAmplitude: number;
   setState: (state: ThreeStageState) => void;
   setSpeech: (speech: string) => void;
   setBoardColumns: (columns: BoardColumns) => void;
   triggerPebbleKick: (elapsedSeconds: number) => void;
+  setJawAmplitude: (amplitude: number) => void;
 };
 
 /**
@@ -25,8 +28,10 @@ export const usePlattSceneStore = create<PlattSceneState>((set) => ({
   speech: "",
   boardColumns: [0, 0, 0],
   pebbleKickAt: null,
+  jawAmplitude: 0,
   setState: (state) => set({ state }),
   setSpeech: (speech) => set({ speech }),
   setBoardColumns: (boardColumns) => set({ boardColumns }),
   triggerPebbleKick: (pebbleKickAt) => set({ pebbleKickAt }),
+  setJawAmplitude: (jawAmplitude) => set({ jawAmplitude }),
 }));

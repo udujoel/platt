@@ -20,6 +20,7 @@ const WAYPOINT_ARRIVE_EPSILON = 0.12;
 export function PlattController() {
   const state = usePlattSceneStore((s) => s.state);
   const triggerPebbleKick = usePlattSceneStore((s) => s.triggerPebbleKick);
+  const jawAmplitude = usePlattSceneStore((s) => s.jawAmplitude);
 
   const characterRef = React.useRef<CharacterHandle>(null);
   const previousState = React.useRef<ThreeStageState | null>(null);
@@ -35,6 +36,8 @@ export function PlattController() {
   }, [state]);
 
   useFrame(({ clock }, delta) => {
+    characterRef.current?.setJawAmplitude(jawAmplitude);
+
     if (state !== "idle") {
       currentWaypoint.current = null;
       return;
