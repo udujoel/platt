@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { applyPlanReady, deriveProvisionSteps, provisionStatusLabel, togglePlanCollapsed } from "./provision-store";
-import type { PlanEntry, ProvisionStep } from "./provision-store";
+import { applyPlanReady, applyProvisionEvent, deriveProvisionSteps, provisionStatusLabel, togglePlanCollapsed } from "./provision-store";
+import type { PlanEntry, ProvisionState, ProvisionStep } from "./provision-store";
 import type { BackendEvent } from "../backend-events";
 
 function event(partial: Partial<BackendEvent> & { type: BackendEvent["type"] }, at: string): BackendEvent {
@@ -42,14 +42,16 @@ describe("deriveProvisionSteps", () => {
     expect(steps.map((s) => s.status)).toEqual(["complete", "complete", "complete", "complete", "complete", "complete", "complete"]);
   });
 
-  it("marks apply and done as errored when approval is rejected then apply fails", () => {
+  it("marks the approval step itself as errored when rejected, leaving apply untouched", () => {
     const rejected = deriveProvisionSteps([
       event({ type: "approval_required", job_id: "job-1", approval_id: "ap-1", summary: "confirm" }, "t1"),
       event({ type: "approval_result", job_id: "job-1", approval_id: "ap-1", approved: false }, "t2"),
     ]);
-    expect(step(rejected, "approval").status).toBe("complete");
-    expect(step(rejected, "apply").status).toBe("error");
+    expect(step(rejected, "approval").status).toBe("error");
+    expect(step(rejected, "apply").status).toBe("pending");
+  });
 
+  it("marks apply and done as errored when apply itself fails", () => {
     const applyFailed = deriveProvisionSteps([
       event({ type: "apply_result", job_id: "job-1", success: false, summary: "boom" }, "t1"),
     ]);
@@ -73,11 +75,11 @@ describe("provisionStatusLabel", () => {
     expect(provisionStatusLabel(deriveProvisionSteps([]))).toBeNull();
   });
 
-  it("maps the active plan step to 'Running plan'", () => {
+  it("maps a plan that's ready for review to 'Plan ready for review', not 'running'", () => {
     const steps = deriveProvisionSteps([
       event({ type: "plan_ready", job_id: "job-1", summary: "s", has_blocking_changes: false }, "t1"),
     ]);
-    expect(provisionStatusLabel(steps)).toBe("Running plan");
+    expect(provisionStatusLabel(steps)).toBe("Plan ready for review");
   });
 
   it("maps the awaiting-approval step to 'Waiting for your approval'", () => {
@@ -103,6 +105,56 @@ describe("provisionStatusLabel", () => {
   it("surfaces an error state ahead of any other mapping", () => {
     const steps = deriveProvisionSteps([event({ type: "apply_result", job_id: "job-1", success: false, summary: "s" }, "t1")]);
     expect(provisionStatusLabel(steps)).toBe("Provision needs attention");
+  });
+
+  it("also surfaces an error state when the approval itself was rejected", () => {
+    const steps = deriveProvisionSteps([
+      event({ type: "approval_required", job_id: "job-1", approval_id: "ap-1", summary: "confirm" }, "t1"),
+      event({ type: "approval_result", job_id: "job-1", approval_id: "ap-1", approved: false }, "t2"),
+    ]);
+    expect(provisionStatusLabel(steps)).toBe("Provision needs attention");
+  });
+});
+
+describe("applyProvisionEvent", () => {
+  const empty: ProvisionState = { activeJobId: null, events: [], planEntries: [] };
+
+  it("adopts the first job it sees without requiring a job_created event", () => {
+    const state = applyProvisionEvent(empty, event({ type: "approval_required", job_id: "job-1", approval_id: "ap-1", summary: "s" }, "t1"));
+    expect(state.activeJobId).toBe("job-1");
+    expect(state.events).toHaveLength(1);
+  });
+
+  it("accumulates events and plan entries for the active job", () => {
+    let state = applyProvisionEvent(empty, event({ type: "job_created", job_id: "job-1", prompt: "x" }, "t1"));
+    state = applyProvisionEvent(state, event({ type: "plan_ready", job_id: "job-1", summary: "do the thing", has_blocking_changes: false }, "t2"));
+    expect(state.events).toHaveLength(2);
+    expect(state.planEntries).toHaveLength(1);
+    expect(state.planEntries[0].jobId).toBe("job-1");
+  });
+
+  it("resets events and plan entries when a new job's job_created event arrives", () => {
+    let state = applyProvisionEvent(empty, event({ type: "job_created", job_id: "job-1", prompt: "x" }, "t1"));
+    state = applyProvisionEvent(state, event({ type: "plan_ready", job_id: "job-1", summary: "old plan", has_blocking_changes: false }, "t2"));
+    expect(state.planEntries).toHaveLength(1);
+
+    state = applyProvisionEvent(state, event({ type: "job_created", job_id: "job-2", prompt: "y" }, "t3"));
+
+    expect(state.activeJobId).toBe("job-2");
+    expect(state.events).toHaveLength(1);
+    expect(state.events[0].type).toBe("job_created");
+    expect(state.planEntries).toHaveLength(0);
+  });
+
+  it("drops stale events for a job that is no longer active", () => {
+    let state = applyProvisionEvent(empty, event({ type: "job_created", job_id: "job-1", prompt: "x" }, "t1"));
+    state = applyProvisionEvent(state, event({ type: "job_created", job_id: "job-2", prompt: "y" }, "t2"));
+
+    const beforeStaleEvent = state;
+    state = applyProvisionEvent(state, event({ type: "plan_ready", job_id: "job-1", summary: "stale plan", has_blocking_changes: false }, "t3"));
+
+    expect(state).toEqual(beforeStaleEvent);
+    expect(state.planEntries).toHaveLength(0);
   });
 });
 

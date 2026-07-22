@@ -73,8 +73,10 @@ export function deriveProvisionSteps(events: BackendEvent[], jobId?: string): Pr
         setActive(4);
         break;
       case "approval_result":
-        statuses.set("approval", "complete");
-        statuses.set("apply", event.approved ? "active" : "error");
+        // A rejection stops the run at the approval gate — apply never starts,
+        // so the failure belongs on the approval step, not on apply.
+        statuses.set("approval", event.approved ? "complete" : "error");
+        if (event.approved) statuses.set("apply", "active");
         break;
       case "apply_result":
         statuses.set("apply", event.success ? "complete" : "error");
@@ -92,7 +94,7 @@ const activeStepLabels: Record<ProvisionStepId, string> = {
   extracting: "Extracting requirements",
   work_items: "Creating work items",
   pr: "Opening pull request",
-  plan: "Running plan",
+  plan: "Plan ready for review",
   approval: "Waiting for your approval",
   apply: "Applying",
   done: "Done",
@@ -131,27 +133,51 @@ export function togglePlanCollapsed(entries: PlanEntry[], id: string): PlanEntry
   return entries.map((entry) => (entry.id === id ? { ...entry, collapsed: !entry.collapsed } : entry));
 }
 
-type ProvisionStore = {
+export type ProvisionState = {
+  activeJobId: string | null;
   events: BackendEvent[];
   planEntries: PlanEntry[];
+};
+
+const emptyProvisionState: ProvisionState = { activeJobId: null, events: [], planEntries: [] };
+
+/**
+ * Scopes the provision timeline + plan blocks to a single active job. A new
+ * job_created for a different job resets the state so a fresh run doesn't
+ * inherit the previous job's steps or plan; events for a job other than the
+ * currently tracked one are treated as stale and dropped.
+ */
+export function applyProvisionEvent(state: ProvisionState, event: BackendEvent): ProvisionState {
+  if (!relevantEventTypes.has(event.type)) return state;
+  const eventJobId = "job_id" in event ? event.job_id : undefined;
+  if (!eventJobId) return state;
+
+  if (event.type === "job_created" && state.activeJobId && eventJobId !== state.activeJobId) {
+    return { activeJobId: eventJobId, events: [event], planEntries: [] };
+  }
+
+  if (state.activeJobId && eventJobId !== state.activeJobId) return state;
+
+  const events = [...state.events, event].slice(-500);
+  const planEntries = event.type === "plan_ready" ? applyPlanReady(state.planEntries, event) : state.planEntries;
+  return { activeJobId: state.activeJobId ?? eventJobId, events, planEntries };
+}
+
+type ProvisionStore = ProvisionState & {
   seenEventIds: string[];
   applyEvent: (event: BackendEvent) => void;
   togglePlan: (id: string) => void;
 };
 
 export const useProvisionStore = create<ProvisionStore>((set) => ({
-  events: [],
-  planEntries: [],
+  ...emptyProvisionState,
   seenEventIds: [],
   applyEvent: (event) =>
     set((current) => {
       if (current.seenEventIds.includes(event.id)) return current;
       const seenEventIds = [...current.seenEventIds, event.id].slice(-500);
-      if (!relevantEventTypes.has(event.type)) return { seenEventIds };
-
-      const events = [...current.events, event].slice(-500);
-      const planEntries = event.type === "plan_ready" ? applyPlanReady(current.planEntries, event) : current.planEntries;
-      return { events, planEntries, seenEventIds };
+      const next = applyProvisionEvent(current, event);
+      return { ...next, seenEventIds };
     }),
   togglePlan: (id) => set((current) => ({ planEntries: togglePlanCollapsed(current.planEntries, id) })),
 }));

@@ -33,7 +33,7 @@ import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 from uuid import UUID, uuid4
 
@@ -245,6 +245,21 @@ def _read_seed_infra_conventions(seed_infra_path: Path) -> str:
     return "\n\n".join(snippets)
 
 
+def _validate_generated_file_path(file_path: str) -> str:
+    """Reject a model-controlled ``file_path`` that could escape the sandboxed checkout.
+
+    ``file_path`` comes straight from the LLM's JSON reply and is later joined
+    onto a local temp directory (``run_local_terraform_plan``) and used as an
+    Azure DevOps repo path (``push_file``). An absolute path or a ``..``
+    segment could otherwise write outside the sandbox or outside the intended
+    repo location, so both are rejected outright rather than merely resolved.
+    """
+    candidate = PurePosixPath(file_path)
+    if candidate.is_absolute() or not candidate.parts or ".." in candidate.parts:
+        raise ProvisionError(f"generated file_path is not a safe relative path: {file_path!r}")
+    return candidate.as_posix()
+
+
 async def _generate_terraform(
     job_id: UUID,
     bus: EventBus,
@@ -271,22 +286,72 @@ async def _generate_terraform(
     content = str(data.get("content", ""))
     if not file_path or not content.strip():
         raise ProvisionError("Terraform codegen did not produce both a file_path and content")
+    file_path = _validate_generated_file_path(file_path)
     return file_path, content
 
 
-# -- Step 4: branch + PR authoring --------------------------------------------------
+# -- Step 4: branch + commit + PR authoring ------------------------------------------
+
+
+def _provision_branch_name(job_id: UUID) -> str:
+    return f"platt/provision-{job_id}"
+
+
+async def _push_generated_terraform(
+    tool_executor: ToolExecutor,
+    config: ProvisionConfig,
+    *,
+    branch_name: str,
+    file_path: str,
+    content: str,
+    pushed_paths: set[str],
+) -> None:
+    """Commit ``content`` to ``branch_name``, creating it from the target branch on first use.
+
+    Every self-repair attempt calls this again: the branch already exists on
+    retries, so this pushes a follow-up commit onto it (``edit`` if this exact
+    path was already pushed on this branch, ``add`` otherwise) rather than
+    forking a new branch or opening another PR.
+    """
+    existing_branch = await tool_executor.execute(
+        "get_branch", {"repository_id": config.repository_id, "branch_name": branch_name}
+    )
+    if existing_branch is not None:
+        base_object_id = existing_branch["objectId"]
+    else:
+        base_branch = await tool_executor.execute(
+            "get_branch", {"repository_id": config.repository_id, "branch_name": config.target_branch}
+        )
+        if base_branch is None:
+            raise ProvisionError(f"base branch not found: {config.target_branch!r}")
+        base_object_id = base_branch["objectId"]
+
+    await tool_executor.execute(
+        "push_file",
+        {
+            "repository_id": config.repository_id,
+            "branch_name": branch_name,
+            "base_object_id": base_object_id,
+            "file_path": file_path,
+            "content": content,
+            "change_type": "edit" if file_path in pushed_paths else "add",
+            "comment": f"Platt: provision {file_path}",
+        },
+    )
+    pushed_paths.add(file_path)
 
 
 async def _open_pull_request(
-    job_id: UUID,
     tool_executor: ToolExecutor,
     config: ProvisionConfig,
     requirement: RequirementSpec,
+    *,
+    branch_name: str,
     file_path: str,
 ) -> tuple[str, int]:
-    source_branch = f"refs/heads/platt/provision-{job_id}"
+    source_branch = f"refs/heads/{branch_name}"
     title = f"Provision {requirement.resource_type}: {requirement.name}"
-    description = f"Adds `{file_path}` via Platt's chat-to-provision flow. Job `{job_id}`."
+    description = f"Adds `{file_path}` via Platt's chat-to-provision flow."
     pr = await tool_executor.execute(
         "create_pr",
         {
@@ -327,9 +392,15 @@ def run_local_terraform_plan(file_path: str, content: str, config: ProvisionConf
 
     env = {"PATH": os.environ.get("PATH", "")}
     with tempfile.TemporaryDirectory(prefix="platt-provision-") as tmp:
-        workdir = Path(tmp)
+        workdir = Path(tmp).resolve()
         shutil.copytree(config.seed_infra_path, workdir, dirs_exist_ok=True)
-        target = workdir / file_path
+        # Defense in depth: _validate_generated_file_path already rejects
+        # absolute paths and ".." segments before this runs, but the model
+        # controls file_path, so re-check the resolved path never leaves
+        # workdir before writing anything to disk.
+        target = (workdir / file_path).resolve()
+        if target != workdir and workdir not in target.parents:
+            raise ProvisionError(f"generated file_path escapes the sandbox: {file_path!r}")
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content, encoding="utf-8")
 
@@ -440,11 +511,12 @@ async def run_provision_plan(
     requirement = await _extract_requirement(job_id, bus, llm, prompt)
     parent_id, child_ids = await _decompose_work_items(job_id, bus, llm, tool_executor, requirement)
 
+    branch_name = _provision_branch_name(job_id)
+    pushed_paths: set[str] = set()
     repair_attempts = 0
     error_feedback: str | None = None
     file_path = ""
     content = ""
-    pull_request_id = 0
     plan: TerraformPlanResult | None = None
 
     while True:
@@ -452,7 +524,16 @@ async def run_provision_plan(
             file_path, content = await _generate_terraform(
                 job_id, bus, llm, requirement, config.seed_infra_path, error_feedback=error_feedback
             )
-            _, pull_request_id = await _open_pull_request(job_id, tool_executor, config, requirement, file_path)
+
+            await bus.publish(AgentStateEvent(job_id=job_id, state=PlattState.WORKING, label="Pushing generated Terraform"))
+            await _push_generated_terraform(
+                tool_executor,
+                config,
+                branch_name=branch_name,
+                file_path=file_path,
+                content=content,
+                pushed_paths=pushed_paths,
+            )
 
             await bus.publish(AgentStateEvent(job_id=job_id, state=PlattState.WORKING, label="Running local terraform plan"))
             plan = terraform_runner(file_path, content, config)
@@ -477,6 +558,13 @@ async def run_provision_plan(
             error_feedback = str(error)
 
     assert plan is not None  # the loop only exits via `break` once `plan` is set
+
+    # PR authoring happens exactly once, after the branch holds a validated
+    # plan: opening it inside the retry loop above would open a new PR on
+    # every self-repair attempt instead of pushing follow-up commits.
+    _, pull_request_id = await _open_pull_request(
+        tool_executor, config, requirement, branch_name=branch_name, file_path=file_path
+    )
 
     approval_id = uuid4()
     persistence.create_approval(
@@ -527,14 +615,15 @@ async def run_provision_apply(
     """Run only once a human has approved. Structurally cannot apply otherwise.
 
     ``require_approval`` (raises unless a decided, unexpired, unconsumed
-    approval exists for this exact job/plan_hash/commit_sha) and
-    ``consume_approval`` (one-time; a second apply attempt on the same
-    approval always fails) are both mandatory and un-bypassable here — there
-    is no code path in this function that reaches the apply-pipeline trigger
-    without both succeeding first.
+    approval exists for this exact job/plan_hash/commit_sha) is mandatory and
+    un-bypassable here — there is no code path in this function that reaches
+    the apply-pipeline trigger without it succeeding first. ``consume_approval``
+    only runs once apply is actually going to proceed: checking live
+    credentials first means an "apply_blocked" outcome (no live creds/pipeline
+    configured yet) leaves the one-time approval unconsumed, so a later apply
+    attempt with credentials configured can still use it.
     """
     record = require_approval(persistence, job_id, plan_hash=plan_hash, commit_sha=commit_sha)
-    consume_approval(persistence, UUID(record.id))
 
     if not (config.has_live_credentials and config.apply_pipeline_id):
         await bus.publish(
@@ -545,6 +634,8 @@ async def run_provision_apply(
             )
         )
         return ProvisionApplyResult(status="apply_blocked", summary="apply requires live Azure credentials")
+
+    consume_approval(persistence, UUID(record.id))
 
     await bus.publish(AgentStateEvent(job_id=job_id, state=PlattState.WORKING, label="Triggering apply pipeline"))
     run = await tool_executor.execute(

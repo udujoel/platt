@@ -22,8 +22,11 @@ from app.persistence import Persistence
 from app.provision import (
     ClarificationNeededError,
     ProvisionConfig,
+    ProvisionError,
     SelfRepairExhaustedError,
     TerraformPlanResult,
+    _validate_generated_file_path,
+    run_local_terraform_plan,
     run_provision_apply,
     run_provision_plan,
 )
@@ -85,10 +88,21 @@ def _next_id_factory():
 
 
 def make_fake_provision_registry(
-    *, pipeline_result: str = "succeeded", wiki_exists: bool = False
+    *, pipeline_result: str = "succeeded", wiki_exists: bool = False, target_branch: str = "main"
 ) -> ToolRegistry:
+    """A mock-friendly stand-in for the AzDO-backed provision tools.
+
+    Tracks branch tips and push/PR calls in ``registry.test_state`` so tests
+    can assert the fix for "PR opened once, follow-up commits pushed to the
+    same branch on repair attempts" without needing a real AzdoClient.
+    """
     registry = ToolRegistry()
     next_id = _next_id_factory()
+    state: dict[str, Any] = {
+        "branches": {target_branch: {"objectId": "base-commit-0"}},
+        "push_calls": [],
+        "pr_calls": [],
+    }
 
     async def create_work_item(arguments: dict, ctx: ToolContext) -> dict:
         del ctx
@@ -98,8 +112,20 @@ def make_fake_provision_registry(
         del ctx
         return {"id": arguments["work_item_id"], "fields": {"System.State": arguments["state"]}}
 
+    async def get_branch(arguments: dict, ctx: ToolContext) -> dict | None:
+        del ctx
+        return state["branches"].get(arguments["branch_name"])
+
+    async def push_file(arguments: dict, ctx: ToolContext) -> dict:
+        del ctx
+        state["push_calls"].append(dict(arguments))
+        push_id = len(state["push_calls"])
+        state["branches"][arguments["branch_name"]] = {"objectId": f"commit-{push_id}"}
+        return {"pushId": push_id}
+
     async def create_pr(arguments: dict, ctx: ToolContext) -> dict:
-        del ctx, arguments
+        del ctx
+        state["pr_calls"].append(dict(arguments))
         return {"pullRequestId": next_id()}
 
     async def run_pipeline(arguments: dict, ctx: ToolContext) -> dict:
@@ -124,6 +150,8 @@ def make_fake_provision_registry(
     for name, handler in [
         ("create_work_item", create_work_item),
         ("update_work_item_state", update_work_item_state),
+        ("get_branch", get_branch),
+        ("push_file", push_file),
         ("create_pr", create_pr),
         ("run_pipeline", run_pipeline),
         ("get_pipeline_run", get_pipeline_run),
@@ -131,6 +159,7 @@ def make_fake_provision_registry(
         ("update_wiki_page", update_wiki_page),
     ]:
         registry.register(ToolDefinition(name, name, schema, handler))
+    registry.test_state = state
     return registry
 
 
@@ -211,6 +240,7 @@ def test_plan_phase_emits_the_full_event_sequence_and_requests_approval(persiste
             "work_item_moved",  # child 3
             "work_item_moved",  # child 4
             "agent_state",  # working (terraform codegen)
+            "agent_state",  # working (pushing generated terraform)
             "agent_state",  # working (local terraform plan)
             "plan_ready",
             "agent_state",  # awaiting_approval
@@ -232,6 +262,15 @@ def test_plan_phase_emits_the_full_event_sequence_and_requests_approval(persiste
         assert approval is not None
         assert approval["status"] == "pending"
         assert approval["plan_hash"] == result.plan.plan_hash
+
+        # The generated Terraform was committed to the branch exactly once (a
+        # fresh "add"), and the PR opened exactly once, pointing at that branch.
+        state = executor.registry.test_state
+        assert len(state["push_calls"]) == 1
+        assert state["push_calls"][0]["change_type"] == "add"
+        assert state["push_calls"][0]["file_path"] == TERRAFORM_REPLY["file_path"]
+        assert len(state["pr_calls"]) == 1
+        assert state["pr_calls"][0]["source_branch"].endswith(f"platt/provision-{job_id}")
 
     asyncio.run(_run())
 
@@ -297,6 +336,14 @@ def test_blast_radius_out_of_sandbox_triggers_self_repair_then_exhausts(persiste
         # 3 "attempt N" events plus the final "self-repair exhausted" event.
         assert len(concerned_states) == 4
         assert not any(isinstance(event, ApprovalRequiredEvent) for event in bus.events)
+
+        # Every attempt pushed a follow-up commit to the same branch (the LLM
+        # reused the same file_path, so the first push is an "add" and the
+        # rest are "edit"), but no PR ever opened since the loop never broke.
+        state = executor.registry.test_state
+        assert [call["change_type"] for call in state["push_calls"]] == ["add", "edit", "edit", "edit"]
+        assert len({call["branch_name"] for call in state["push_calls"]}) == 1
+        assert state["pr_calls"] == []
 
     asyncio.run(_run())
 
@@ -414,7 +461,59 @@ def test_apply_blocked_without_live_credentials_even_when_approved(persistence: 
         assert apply_result.success is False
         assert "live Azure credentials" in apply_result.summary
 
-        # The approval was still consumed by the attempt (one-time, even though apply itself was gated off).
+        # Credentials are checked before consuming: a blocked apply leaves the
+        # one-time approval usable for a later attempt once creds are configured.
+        approval = persistence.get_approval(approval_id)
+        assert approval["consumed_at"] is None
+        assert approval["status"] == "approved"
+
+    asyncio.run(_run())
+
+
+def test_apply_blocked_then_retried_with_credentials_reuses_the_same_unconsumed_approval(
+    persistence: Persistence,
+) -> None:
+    async def _run() -> None:
+        from datetime import datetime, timedelta
+
+        bus = CapturingBus()
+        job_id = uuid4()
+        executor = make_executor(persistence, bus, job_id, pipeline_result="succeeded", wiki_exists=True)
+
+        approval_id = uuid4()
+        persistence.create_approval(approval_id, job_id, "hash-a", "sha-a", scope="sandbox-rg")
+        persistence.decide_approval(
+            approval_id, approver="alice", status="approved", expires_at=datetime.utcnow() + timedelta(seconds=900)
+        )
+
+        blocked = await run_provision_apply(
+            job_id=job_id,
+            bus=bus,
+            persistence=persistence,
+            tool_executor=executor,
+            config=make_config(has_live_credentials=False),
+            plan_hash="hash-a",
+            commit_sha="sha-a",
+            parent_work_item_id="1",
+            child_work_item_ids=[],
+        )
+        assert blocked.status == "apply_blocked"
+
+        # No credentials the first time; the same approval still authorizes a
+        # retry once credentials/pipeline are configured.
+        retried = await run_provision_apply(
+            job_id=job_id,
+            bus=bus,
+            persistence=persistence,
+            tool_executor=executor,
+            config=make_config(has_live_credentials=True, apply_pipeline_id=42),
+            plan_hash="hash-a",
+            commit_sha="sha-a",
+            parent_work_item_id="1",
+            child_work_item_ids=[],
+        )
+        assert retried.status == "applied"
+
         approval = persistence.get_approval(approval_id)
         assert approval["consumed_at"] is not None
 
@@ -427,14 +526,16 @@ def test_apply_cannot_reuse_an_already_consumed_approval(persistence: Persistenc
 
         bus = CapturingBus()
         job_id = uuid4()
-        executor = make_executor(persistence, bus, job_id)
+        executor = make_executor(persistence, bus, job_id, pipeline_result="succeeded")
         approval_id = uuid4()
         persistence.create_approval(approval_id, job_id, "hash-a", "sha-a", scope="sandbox-rg")
         persistence.decide_approval(
             approval_id, approver="alice", status="approved", expires_at=datetime.utcnow() + timedelta(seconds=900)
         )
 
-        config = make_config(has_live_credentials=False)
+        # Live credentials so the first attempt actually applies and consumes
+        # the approval; a blocked ("no creds") attempt would leave it unconsumed.
+        config = make_config(has_live_credentials=True, apply_pipeline_id=42)
         await run_provision_apply(
             job_id=job_id,
             bus=bus,
@@ -542,5 +643,65 @@ def test_apply_pipeline_failure_stops_before_wiki_and_work_items(persistence: Pe
         assert result.status == "apply_failed"
         assert not any(isinstance(event, WorkItemMovedEvent) for event in bus.events)
         assert bus.events[-1].state == PlattState.CONCERNED
+
+    asyncio.run(_run())
+
+
+# -- security: generated file_path cannot escape the sandbox --------------------------
+
+
+@pytest.mark.parametrize(
+    "malicious_path",
+    [
+        "../outside.tf",
+        "modules/../../outside.tf",
+        "/etc/passwd",
+        "",
+    ],
+)
+def test_validate_generated_file_path_rejects_escapes(malicious_path: str) -> None:
+    with pytest.raises(ProvisionError, match="not a safe relative path"):
+        _validate_generated_file_path(malicious_path)
+
+
+def test_validate_generated_file_path_accepts_a_normal_relative_path() -> None:
+    assert _validate_generated_file_path("modules/storage-account/main.tf") == "modules/storage-account/main.tf"
+
+
+def test_run_local_terraform_plan_refuses_to_write_outside_the_sandbox(tmp_path) -> None:
+    config = make_config()
+    # Bypasses _validate_generated_file_path to exercise run_local_terraform_plan's
+    # own defense-in-depth check directly, as CodeRabbit's suggested fix requires.
+    with pytest.raises(ProvisionError, match="escapes the sandbox"):
+        run_local_terraform_plan("../escape.tf", "resource block", config)
+
+
+def test_plan_phase_self_repairs_away_from_a_malicious_file_path(persistence: Persistence) -> None:
+    async def _run() -> None:
+        bus = CapturingBus()
+        job_id = uuid4()
+        executor = make_executor(persistence, bus, job_id)
+        malicious_terraform_reply = {"file_path": "../../etc/escape.tf", "content": "resource block"}
+        llm = ScriptedJsonLLM(
+            [dict(REQUIREMENT_REPLY), dict(CHILDREN_REPLY), malicious_terraform_reply, dict(TERRAFORM_REPLY)]
+        )
+
+        result = await run_provision_plan(
+            job_id=job_id,
+            bus=bus,
+            persistence=persistence,
+            llm=llm,
+            tool_executor=executor,
+            prompt="Provision a storage account",
+            config=make_config(),
+            terraform_runner=fake_plan(),
+        )
+
+        assert result.repair_attempts == 1
+        assert result.terraform_file_path == TERRAFORM_REPLY["file_path"]
+        # The malicious path was rejected before anything was pushed for it.
+        state = executor.registry.test_state
+        assert len(state["push_calls"]) == 1
+        assert state["push_calls"][0]["file_path"] == TERRAFORM_REPLY["file_path"]
 
     asyncio.run(_run())

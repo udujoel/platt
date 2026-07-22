@@ -77,6 +77,8 @@ PROVISION_TOOLS: frozenset[str] = frozenset(
     {
         "create_work_item",
         "update_work_item_state",
+        "get_branch",
+        "push_file",
         "create_pr",
         "get_pr",
         "run_pipeline",
@@ -238,6 +240,43 @@ def build_default_registry() -> ToolRegistry:
                 },
             },
             _azdo_handler(azdo_tools.update_work_item_state),
+        )
+    )
+    registry.register(
+        ToolDefinition(
+            "get_branch",
+            "Look up an Azure DevOps repository branch's current commit (ref), or null if it doesn't exist.",
+            {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["repository_id", "branch_name"],
+                "properties": {
+                    "repository_id": {"type": "string", "minLength": 1, "maxLength": 256},
+                    "branch_name": {"type": "string", "minLength": 1, "maxLength": 512},
+                },
+            },
+            _azdo_handler(azdo_tools.get_branch),
+        )
+    )
+    registry.register(
+        ToolDefinition(
+            "push_file",
+            "Push one commit adding/editing a single file on an Azure DevOps repository branch.",
+            {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["repository_id", "branch_name", "base_object_id", "file_path", "content", "change_type", "comment"],
+                "properties": {
+                    "repository_id": {"type": "string", "minLength": 1, "maxLength": 256},
+                    "branch_name": {"type": "string", "minLength": 1, "maxLength": 512},
+                    "base_object_id": {"type": "string", "minLength": 1, "maxLength": 64},
+                    "file_path": {"type": "string", "minLength": 1, "maxLength": 4096},
+                    "content": {"type": "string", "maxLength": 1000000},
+                    "change_type": {"type": "string", "enum": ["add", "edit"]},
+                    "comment": {"type": "string", "minLength": 1, "maxLength": 2000},
+                },
+            },
+            _azdo_handler(azdo_tools.push_file),
         )
     )
     registry.register(
