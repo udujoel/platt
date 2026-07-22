@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { IDLE_WAYPOINTS, pickNextWaypoint } from "./waypoints";
+import {
+  IDLE_DWELL_MAX_SECONDS,
+  IDLE_DWELL_MIN_SECONDS,
+  IDLE_WAYPOINTS,
+  glanceFacingOffset,
+  pickDwellSeconds,
+  pickIdleGesture,
+  pickNextWaypoint,
+  shiftSwayOffset,
+  unwrapFacingAngle,
+  wanderEaseLambda,
+} from "./waypoints";
 
 describe("pickNextWaypoint", () => {
   it("picks deterministically from the rng", () => {
@@ -23,5 +34,80 @@ describe("pickNextWaypoint", () => {
 
   it("throws instead of returning undefined for an empty waypoint list", () => {
     expect(() => pickNextWaypoint(null, [], () => 0)).toThrow(/non-empty/);
+  });
+});
+
+describe("pickDwellSeconds", () => {
+  it("stays within the configured min/max range", () => {
+    expect(pickDwellSeconds(() => 0)).toBe(IDLE_DWELL_MIN_SECONDS);
+    expect(pickDwellSeconds(() => 1)).toBeCloseTo(IDLE_DWELL_MAX_SECONDS);
+  });
+
+  it("honors a custom range", () => {
+    expect(pickDwellSeconds(() => 0.5, 1, 3)).toBeCloseTo(2);
+  });
+});
+
+describe("pickIdleGesture", () => {
+  it("picks deterministically from the rng, weighted toward 'none'", () => {
+    expect(pickIdleGesture(() => 0)).toBe("none");
+    expect(pickIdleGesture(() => 0.999)).toBe("stretch");
+  });
+});
+
+describe("wanderEaseLambda", () => {
+  it("starts at zero and ramps up to the base lambda over rampSeconds", () => {
+    expect(wanderEaseLambda(0)).toBe(0);
+    expect(wanderEaseLambda(0.2, 3.2, 0.4)).toBeCloseTo(1.6);
+    expect(wanderEaseLambda(0.4, 3.2, 0.4)).toBeCloseTo(3.2);
+  });
+
+  it("clamps at the base lambda past rampSeconds", () => {
+    expect(wanderEaseLambda(10, 3.2, 0.4)).toBe(3.2);
+  });
+});
+
+describe("unwrapFacingAngle", () => {
+  it("leaves the target unchanged when it's already close to the previous heading", () => {
+    expect(unwrapFacingAngle(0.1, 0.2)).toBeCloseTo(0.2);
+  });
+
+  it("takes the short way across the +/-pi seam instead of the long way around", () => {
+    // Previous heading is just past +pi (equivalent to just under -pi); the new atan2 reading
+    // lands just past -pi. The raw target is ~2*pi away even though the true turn is tiny.
+    const previous = Math.PI - 0.05;
+    const target = -Math.PI + 0.05;
+    const unwrapped = unwrapFacingAngle(previous, target);
+    expect(unwrapped).toBeCloseTo(Math.PI + 0.05);
+    expect(Math.abs(unwrapped - previous)).toBeLessThan(0.2);
+  });
+
+  it("unwraps a heading that has spun several full turns past the previous value", () => {
+    const previous = 7 * Math.PI;
+    const target = 0.1;
+    const unwrapped = unwrapFacingAngle(previous, target);
+    expect(Math.abs(unwrapped - previous)).toBeLessThanOrEqual(Math.PI);
+  });
+});
+
+describe("glanceFacingOffset", () => {
+  it("starts and ends at zero, peaking mid-dwell", () => {
+    expect(glanceFacingOffset(0)).toBeCloseTo(0);
+    expect(glanceFacingOffset(1)).toBeCloseTo(0);
+    expect(glanceFacingOffset(0.5, 0.55)).toBeCloseTo(0.55);
+  });
+});
+
+describe("shiftSwayOffset", () => {
+  it("returns a zero offset at the start and end of the dwell", () => {
+    expect(shiftSwayOffset(0)).toEqual([0, 0, 0]);
+    const end = shiftSwayOffset(1);
+    expect(end[0]).toBeCloseTo(0);
+    expect(end[2]).toBeCloseTo(0);
+  });
+
+  it("sways away from the origin mid-dwell", () => {
+    const mid = shiftSwayOffset(0.25, 0.05);
+    expect(Math.hypot(mid[0], mid[2])).toBeGreaterThan(0);
   });
 });

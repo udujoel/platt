@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { ThreeStageState } from "../three-stage-pose";
+import type { Vector3Tuple } from "./types";
 
 export type BoardColumns = [number, number, number];
 
@@ -10,11 +11,19 @@ export type PlattSceneState = {
   pebbleKickAt: number | null;
   /** Raw 0..1 TTS amplitude (PRD F8), read by `PlattController` each frame and handed to the character rig. */
   jawAmplitude: number;
+  /**
+   * Live world anchor (x, y, z) of the character rig, published by `PlattController` during idle
+   * wander/dwell/gesture and cleared to null in the pose-driven states (where `Bubble.tsx` falls
+   * back to the pose approximation). Lets subtree consumers like the speech bubble follow the rig
+   * without prop drilling through the Canvas tree.
+   */
+  headAnchor: Vector3Tuple | null;
   setState: (state: ThreeStageState) => void;
   setSpeech: (speech: string) => void;
   setBoardColumns: (columns: BoardColumns) => void;
   triggerPebbleKick: (elapsedSeconds: number) => void;
   setJawAmplitude: (amplitude: number) => void;
+  setHeadAnchor: (anchor: Vector3Tuple | null) => void;
 };
 
 /**
@@ -29,9 +38,11 @@ export const usePlattSceneStore = create<PlattSceneState>((set) => ({
   boardColumns: [0, 0, 0],
   pebbleKickAt: null,
   jawAmplitude: 0,
+  headAnchor: null,
   setState: (state) => set({ state }),
   setSpeech: (speech) => set({ speech }),
   setBoardColumns: (boardColumns) => set({ boardColumns }),
   triggerPebbleKick: (pebbleKickAt) => set({ pebbleKickAt }),
   setJawAmplitude: (jawAmplitude) => set({ jawAmplitude }),
+  setHeadAnchor: (headAnchor) => set({ headAnchor }),
 }));

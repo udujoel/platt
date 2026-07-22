@@ -11,8 +11,10 @@ describe("amplitudeToJawRotation", () => {
     expect(amplitudeToJawRotation(1)).toBe(JAW_MAX_ROTATION);
   });
 
-  it("interpolates linearly between rest and max", () => {
-    expect(amplitudeToJawRotation(0.5)).toBeCloseTo(JAW_MAX_ROTATION / 2, 5);
+  it("eases quiet amplitudes open further than a linear map would, so quiet syllables still read", () => {
+    const eased = amplitudeToJawRotation(0.25);
+    expect(eased).toBeGreaterThan(JAW_MAX_ROTATION * 0.25);
+    expect(eased).toBeCloseTo(JAW_MAX_ROTATION * 0.25 ** 0.6, 5);
   });
 
   it("clamps amplitudes below zero", () => {
@@ -25,6 +27,22 @@ describe("amplitudeToJawRotation", () => {
 
   it("honors a custom max rotation", () => {
     expect(amplitudeToJawRotation(1, 0.2)).toBe(0.2);
-    expect(amplitudeToJawRotation(0.5, 0.2)).toBeCloseTo(0.1, 5);
+  });
+
+  it("honors a custom response curve", () => {
+    expect(amplitudeToJawRotation(0.5, JAW_MAX_ROTATION, 1)).toBeCloseTo(JAW_MAX_ROTATION / 2, 5);
+  });
+
+  it("rejects a zero response curve instead of opening the jaw fully on silence (0 ** 0 === 1)", () => {
+    expect(() => amplitudeToJawRotation(0, JAW_MAX_ROTATION, 0)).toThrow(RangeError);
+  });
+
+  it("rejects a negative response curve", () => {
+    expect(() => amplitudeToJawRotation(0.5, JAW_MAX_ROTATION, -1)).toThrow(RangeError);
+  });
+
+  it("rejects a non-finite response curve", () => {
+    expect(() => amplitudeToJawRotation(0.5, JAW_MAX_ROTATION, NaN)).toThrow(RangeError);
+    expect(() => amplitudeToJawRotation(0.5, JAW_MAX_ROTATION, Infinity)).toThrow(RangeError);
   });
 });

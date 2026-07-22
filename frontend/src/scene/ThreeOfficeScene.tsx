@@ -27,7 +27,7 @@ function ThreeOfficeWorld({ state }: { state: ThreeStageState }) {
       <color attach="background" args={["#111720"]} />
       <fog attach="fog" args={["#111720", 7, 14]} />
       <ambientLight intensity={1.15} />
-      <directionalLight position={[3, 6, 5]} intensity={2.4} castShadow />
+      <directionalLight position={[3, 6, 5]} intensity={2.4} />
       <pointLight
         position={[1.45, 2, 0.8]}
         color={state === "concerned" ? "#f87171" : "#ffb454"}
@@ -55,6 +55,9 @@ export function ThreeOfficeScene({
   const setState = usePlattSceneStore((s) => s.setState);
   const setSpeech = usePlattSceneStore((s) => s.setSpeech);
   const setBoardColumns = usePlattSceneStore((s) => s.setBoardColumns);
+  // The bubble's role="status" live region must live outside the aria-hidden Canvas subtree
+  // (assistive tech ignores anything under aria-hidden), so Html portals its DOM node here.
+  const bubblePortalRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => setState(state), [state, setState]);
   React.useEffect(() => setSpeech(speech), [speech, setSpeech]);
@@ -64,17 +67,17 @@ export function ThreeOfficeScene({
 
   return (
     <div className="threeOfficeScene">
+      <div className="threeOfficeSceneOverlay" ref={bubblePortalRef} />
       <Canvas
         aria-hidden="true"
         camera={{ fov: 42, position: [0, 3.15, 7.6] }}
         dpr={[1, 1.5]}
         gl={{ antialias: true, powerPreference: "low-power" }}
-        shadows
       >
         <WebGLContextLossGuard onContextLost={onContextLost} />
         <ThreeOfficeWorld state={state} />
+        <Bubble portalTarget={bubblePortalRef} />
       </Canvas>
-      <Bubble />
     </div>
   );
 }

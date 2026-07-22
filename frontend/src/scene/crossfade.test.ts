@@ -14,21 +14,30 @@ describe("clipForState", () => {
 });
 
 describe("selectCrossfade", () => {
-  it("fades in with no fade-out clip on first mount", () => {
+  it("fades in on the target state's tuned duration with no fade-out clip on first mount", () => {
     expect(selectCrossfade(null, "idle")).toEqual({
       fadeOutClip: null,
       fadeInClip: "idle",
-      fadeOutSeconds: 0.3,
-      fadeInSeconds: 0.3,
+      fadeOutSeconds: 0,
+      fadeInSeconds: 0.4,
     });
   });
 
-  it("crossfades over 0.3s per PRD 5.3 when the mapped clip changes", () => {
+  it("crossfades per PRD 5.3 when the mapped clip changes, each side on its own state's duration", () => {
     expect(selectCrossfade("idle", "working")).toEqual({
       fadeOutClip: "idle",
       fadeInClip: "sit_type",
-      fadeOutSeconds: 0.3,
-      fadeInSeconds: 0.3,
+      fadeOutSeconds: 0.4,
+      fadeInSeconds: 0.45,
+    });
+  });
+
+  it("fades in celebrating fast regardless of how slowly the outgoing state prefers to fade out", () => {
+    expect(selectCrossfade("working", "celebrating")).toEqual({
+      fadeOutClip: "sit_type",
+      fadeInClip: "celebrate",
+      fadeOutSeconds: 0.45,
+      fadeInSeconds: 0.15,
     });
   });
 
