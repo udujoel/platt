@@ -12,10 +12,10 @@ export type PlattSceneState = {
   /** Raw 0..1 TTS amplitude (PRD F8), read by `PlattController` each frame and handed to the character rig. */
   jawAmplitude: number;
   /**
-   * Live world anchor (x, y, z) of the character rig, published by `PlattController` each frame
-   * (currently only wired for the pose-driven states; idle wander is not yet published here — see
-   * `Bubble.tsx`, which falls back to the pose approximation while this is null). Lets subtree
-   * consumers like the speech bubble follow the rig without prop drilling through the Canvas tree.
+   * Live world anchor (x, y, z) of the character rig, published by `PlattController` during idle
+   * wander/dwell/gesture and cleared to null in the pose-driven states (where `Bubble.tsx` falls
+   * back to the pose approximation). Lets subtree consumers like the speech bubble follow the rig
+   * without prop drilling through the Canvas tree.
    */
   headAnchor: Vector3Tuple | null;
   setState: (state: ThreeStageState) => void;
