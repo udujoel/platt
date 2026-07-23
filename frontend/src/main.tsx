@@ -25,6 +25,7 @@ import { AuditView } from "./panels/AuditView";
 import { ApprovalsView } from "./panels/ApprovalsView";
 import { SettingsView } from "./panels/SettingsView";
 import type { AsyncState, Job } from "./panels/JobInspector";
+import { alertEntryCount } from "./panels/dashboard-metrics";
 import type { AuditEntry } from "./panels/dashboard-metrics";
 import type { OnboardingRecord } from "./panels/RepositoryPanel";
 import { deriveProvisionSteps, provisionStatusLabel, useProvisionStore } from "./panels/provision-store";
@@ -401,7 +402,7 @@ function DashboardShell({ readiness, lastEvent }: { readiness: BackendReadiness;
     <div className="dashboardShell">
       <Sidebar active={activeNav} onSelect={setActiveNav} collapsed={sidebarCollapsed} onToggleCollapsed={() => setSidebarCollapsed((c) => !c)} pendingApprovals={pendingApprovals} />
       <div className="dashboardMain">
-        <TopBar title={navTitles[activeNav]} plattState={state} alertCount={audit.data.length} search={search} onSearchChange={setSearch} />
+        <TopBar title={navTitles[activeNav]} plattState={state} alertCount={alertEntryCount(audit.data)} search={search} onSearchChange={setSearch} />
         <div className="stagePillRow">
           <span className={`readinessBadge ${readiness}`} aria-live="polite">backend {readiness}</span>
           <span className={`connectionBadge ${connection}`}>{connection}</span>

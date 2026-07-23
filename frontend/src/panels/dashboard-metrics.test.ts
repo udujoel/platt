@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   activeWorkItemsCount,
+  alertEntryCount,
   auditRunsByDay,
   classifyAuditSeverity,
   clampPercent,
@@ -39,6 +40,23 @@ describe("classifyAuditSeverity", () => {
 
   it("defaults to info", () => {
     expect(classifyAuditSeverity("success")).toBe("info");
+  });
+});
+
+describe("alertEntryCount", () => {
+  it("only counts warning/critical entries, not the full audit trail", () => {
+    const entries: AuditEntry[] = [
+      auditEntry({ id: 1, outcome: "success" }),
+      auditEntry({ id: 2, outcome: "apply failed" }),
+      auditEntry({ id: 3, outcome: "retry after timeout" }),
+      auditEntry({ id: 4, outcome: "success" }),
+    ];
+    expect(alertEntryCount(entries)).toBe(2);
+  });
+
+  it("returns 0 when nothing is alert-severity", () => {
+    const entries: AuditEntry[] = [auditEntry({ id: 1, outcome: "success" })];
+    expect(alertEntryCount(entries)).toBe(0);
   });
 });
 

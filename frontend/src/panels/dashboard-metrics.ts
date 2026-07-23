@@ -28,6 +28,11 @@ export function classifyAuditSeverity(outcome: string): Severity {
   return "info";
 }
 
+/** Notification-bell badge count: only entries severe enough to be an "alert", not the full audit trail. */
+export function alertEntryCount(entries: AuditEntry[]): number {
+  return entries.filter((entry) => classifyAuditSeverity(entry.outcome) !== "info").length;
+}
+
 export function pendingApprovalsCount(entries: ApprovalEntry[]): number {
   return entries.filter((entry) => entry.status === "pending").length;
 }

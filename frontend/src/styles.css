@@ -247,6 +247,12 @@ button {
   color: var(--platt-ink-faint);
 }
 
+.topBarSearch input:focus-visible {
+  outline: 2px solid rgba(45, 212, 191, 0.72);
+  outline-offset: 2px;
+  border-radius: 0.35rem;
+}
+
 .topBarActions {
   display: flex;
   align-items: center;
@@ -1432,7 +1438,8 @@ button.alertsFeedItem:hover {
 
 @media (prefers-reduced-motion: reduce) {
   .spinning,
-  .skeletonStack span {
+  .skeletonStack span,
+  .micButton.listening {
     animation: none;
   }
 }

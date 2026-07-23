@@ -208,9 +208,17 @@ export function PlattDeskWidget({
   className?: string;
 }) {
   const [renderer, useFallback] = useDeskStageRenderer();
+  // The 3D canvas is aria-hidden (it's a WebGL <canvas>, nothing for assistive tech to read), so
+  // this container is the only accessible description of the widget for screen readers — give it
+  // a live status label instead of a static "desk" caption, matching the 2D fallback's role="img".
+  const statusLabel = deskFallbackStatusLabel(state);
 
   return (
-    <div className={className ? `pdw-root ${className}` : "pdw-root"} aria-label="Platt's desk">
+    <div
+      className={className ? `pdw-root ${className}` : "pdw-root"}
+      role="img"
+      aria-label={`Platt is ${statusLabel} at their desk`}
+    >
       <style>{DESK_WIDGET_STYLE}</style>
       {renderer === "three" ? (
         <DeskSceneBoundary fallback={<PlattDeskWidget2D state={state} speech={speech} />} onFailure={useFallback}>
