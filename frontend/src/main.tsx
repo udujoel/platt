@@ -1,166 +1,55 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { ChevronDown, ChevronRight, ChevronUp, CircleAlert, ClipboardList, Play, RefreshCw, SendHorizonal } from "lucide-react";
+import { CircleAlert } from "lucide-react";
 import { create } from "zustand";
 import "./styles.css";
 import { resolveBackendConfiguration } from "./backend-config";
 import type { BackendConfiguration } from "./backend-config";
 import { createBackendReadinessPoller } from "./readiness-status";
 import type { BackendReadiness } from "./readiness-status";
-import { describePersistedEvent } from "./job-event-description";
-import type { PersistedJobEvent } from "./job-event-description";
-import { selectStageRenderer } from "./stage-renderer";
-import type { StageRenderer } from "./stage-renderer";
 import { parseBackendEvent } from "./backend-events";
 import type { BackendEvent, PlattState } from "./backend-events";
 import { createSseClient } from "./sse-client";
-import { IconRail } from "./panels/IconRail";
-import type { RailPanel } from "./panels/IconRail";
-import { KanbanPanel } from "./panels/KanbanPanel";
-import { DashboardPanel } from "./panels/DashboardPanel";
-import { ApprovalGate } from "./panels/ApprovalCard";
-import { closeActivePanel, toggleActivePanel } from "./panels/panel-visibility";
-import { ProvisionTimeline } from "./panels/ProvisionTimeline";
+import type { PersistedJobEvent } from "./job-event-description";
+import { Sidebar } from "./panels/Sidebar";
+import type { NavKey } from "./panels/Sidebar";
+import { TopBar, navTitles } from "./panels/TopBar";
+import { OverviewView } from "./panels/OverviewView";
+import { JobsView } from "./panels/JobsView";
+import type { ChatMessage } from "./panels/JobsView";
+import { ProvisioningView } from "./panels/ProvisioningView";
+import { PipelinesView } from "./panels/PipelinesView";
+import { ModuleGraphCard } from "./panels/ModuleGraphCard";
+import { BoardsBoard } from "./panels/BoardsBoard";
+import { AuditView } from "./panels/AuditView";
+import { ApprovalsView } from "./panels/ApprovalsView";
+import { SettingsView } from "./panels/SettingsView";
+import type { AsyncState, Job } from "./panels/JobInspector";
+import type { AuditEntry } from "./panels/dashboard-metrics";
+import type { OnboardingRecord } from "./panels/RepositoryPanel";
 import { deriveProvisionSteps, provisionStatusLabel, useProvisionStore } from "./panels/provision-store";
-import type { PlanEntry } from "./panels/provision-store";
-import { MicButton } from "./voice/MicButton";
-import { MuteToggle } from "./voice/MuteToggle";
-import { useSpeechSynthesis } from "./voice/use-speech-synthesis";
+import { useApprovalStore } from "./panels/approval-store";
+import { useKanbanStore } from "./panels/kanban-store";
 import { useVoiceMuteStore } from "./voice/mute-store";
+import { useSpeechSynthesis } from "./voice/use-speech-synthesis";
 
-const ThreeOfficeScene = React.lazy(() => import("./scene/ThreeOfficeScene").then(({ ThreeOfficeScene: Scene }) => ({ default: Scene })));
+const PlattDeskWidget = React.lazy(() => import("./scene/PlattDeskWidget"));
 
-class ThreeOfficeSceneBoundary extends React.Component<
-  { children: React.ReactNode; fallback: React.ReactNode; onFailure: () => void },
-  { failed: boolean }
-> {
+class DeskWidgetBoundary extends React.Component<{ children: React.ReactNode }, { failed: boolean }> {
   state = { failed: false };
 
   static getDerivedStateFromError() {
     return { failed: true };
   }
 
-  componentDidCatch() {
-    this.props.onFailure();
-  }
-
   render() {
-    return this.state.failed ? this.props.fallback : this.props.children;
+    return this.state.failed ? null : this.props.children;
   }
 }
 
 type ConnectionState = "connecting" | "connected" | "disconnected";
 
-function browserSupportsWebGL() {
-  try {
-    return Boolean(document.createElement("canvas").getContext("webgl"));
-  } catch {
-    return false;
-  }
-}
-
-function useStageRenderer(): [StageRenderer, () => void] {
-  const [renderer, setRenderer] = React.useState<StageRenderer>("fallback");
-  const useFallback = React.useCallback(() => setRenderer("fallback"), []);
-
-  React.useEffect(() => {
-    const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const refreshRenderer = () => {
-      setRenderer(selectStageRenderer({
-        prefersReducedMotion: motionQuery.matches,
-        supportsWebGL: browserSupportsWebGL(),
-      }));
-    };
-
-    refreshRenderer();
-    motionQuery.addEventListener("change", refreshRenderer);
-    return () => motionQuery.removeEventListener("change", refreshRenderer);
-  }, []);
-
-  return [renderer, useFallback];
-}
-
-type EventEntry = {
-  id: string;
-  label: string;
-  timestamp: string;
-  state: PlattState;
-};
-
-type ChatMessage = {
-  id: string;
-  author: "operator" | "platt";
-  text: string;
-  jobId?: string;
-  streaming?: boolean;
-  createdAt: string;
-};
-
-type AuditEntry = {
-  id: number;
-  job_id: string | null;
-  tool: string;
-  action: string;
-  outcome: string;
-  created_at: string;
-};
-
-type Job = {
-  id: string;
-  prompt: string;
-  status: string;
-  created_at: string;
-  updated_at: string;
-};
-
-type OnboardingModuleNode = {
-  path: string;
-  variables: string[];
-  outputs: string[];
-};
-
-type OnboardingPipeline = {
-  file_path: string;
-};
-
-type OnboardingRecord = {
-  id: string;
-  repository_path: string;
-  created_at: string;
-  files: Array<{ path: string; size_bytes: number }>;
-  terraform_module_nodes: OnboardingModuleNode[];
-  pipeline_yamls: OnboardingPipeline[];
-};
-
-type RepositoryInspectionStep = {
-  id: string;
-  title: string;
-  tool: "read_file" | "glob" | "grep";
-  arguments: Record<string, string>;
-  expected_output: string;
-};
-
-type RepositoryInspectionPlan = {
-  summary: string;
-  steps: RepositoryInspectionStep[];
-};
-
-type RepositoryInspectionPlanResponse = {
-  job_id: string;
-  status: "accepted";
-  plan: RepositoryInspectionPlan;
-};
-
-type RepositoryToolResponse = {
-  tool: "read_file" | "glob" | "grep";
-  result: unknown;
-};
-
-type AsyncState<T> = {
-  data: T;
-  loading: boolean;
-  error: string | null;
-};
+type EventEntry = { id: string; label: string; timestamp: string; state: PlattState };
 
 type EventStore = {
   state: PlattState;
@@ -181,17 +70,6 @@ const backendConfiguration = resolveBackendConfiguration({
 });
 const { apiBaseUrl } = backendConfiguration;
 
-const stateLabels: Record<PlattState, string> = {
-  idle: "Idle",
-  listening: "Listening",
-  thinking: "Thinking",
-  working: "Working",
-  talking: "Talking",
-  awaiting_approval: "Awaiting Approval",
-  celebrating: "Celebrating",
-  concerned: "Concerned",
-};
-
 const createId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const formatTime = (value?: string) => (value ? new Date(value).toLocaleTimeString() : new Date().toLocaleTimeString());
 const nowIso = () => new Date().toISOString();
@@ -204,53 +82,33 @@ const useEventStore = create<EventStore>((set) => ({
   state: "idle",
   connection: "connecting",
   events: [
-    {
-      id: createId(),
-      label: "Phase 1 shell mounted",
-      timestamp: formatTime(),
-      state: "idle",
-    },
+    { id: createId(), label: "Dashboard shell mounted", timestamp: formatTime(), state: "idle" },
   ],
   messages: [
-    {
-      id: createId(),
-      author: "platt",
-      text: "Phase 1 interface ready. Connect the backend to stream live events.",
-      createdAt: nowIso(),
-    },
+    { id: createId(), author: "platt", text: "Dashboard ready. Connect the backend to stream live events.", createdAt: nowIso() },
   ],
   seenBackendEventIds: [],
   setConnection: (connection) =>
     set((current) => ({
       connection,
       events: [
-        {
-          id: createId(),
-          label: connection === "connected" ? "Live stream connected" : `Live stream ${connection}`,
-          timestamp: formatTime(),
-          state: current.state,
-        },
+        { id: createId(), label: connection === "connected" ? "Live stream connected" : `Live stream ${connection}`, timestamp: formatTime(), state: current.state },
         ...current.events,
-      ].slice(0, 10),
+      ].slice(0, 12),
     })),
   addOperatorMessage: (text) =>
     set((current) => ({
       state: "listening",
       messages: [...current.messages, { id: createId(), author: "operator", text, createdAt: nowIso() }],
       events: [
-        {
-          id: createId(),
-          label: "Operator message sent",
-          timestamp: formatTime(),
-          state: "listening" as PlattState,
-        },
+        { id: createId(), label: "Operator message sent", timestamp: formatTime(), state: "listening" as PlattState },
         ...current.events,
-      ].slice(0, 10),
+      ].slice(0, 12),
     })),
   addLocalEvent: (state, label) =>
     set((current) => ({
       state,
-      events: [{ id: createId(), label, timestamp: formatTime(), state }, ...current.events].slice(0, 10),
+      events: [{ id: createId(), label, timestamp: formatTime(), state }, ...current.events].slice(0, 12),
     })),
   applyBackendEvent: (event) =>
     set((current) => {
@@ -262,14 +120,9 @@ const useEventStore = create<EventStore>((set) => ({
           seenBackendEventIds,
           state: event.state,
           events: [
-            {
-              id: event.id,
-              label: event.label,
-              timestamp: formatTime(event.created_at),
-              state: event.state,
-            },
+            { id: event.id, label: event.label, timestamp: formatTime(event.created_at), state: event.state },
             ...current.events,
-          ].slice(0, 10),
+          ].slice(0, 12),
         };
       }
 
@@ -277,14 +130,9 @@ const useEventStore = create<EventStore>((set) => ({
         return {
           seenBackendEventIds,
           events: [
-            {
-              id: event.id,
-              label: "Job accepted by backend",
-              timestamp: formatTime(event.created_at),
-              state: current.state,
-            },
+            { id: event.id, label: "Job accepted by backend", timestamp: formatTime(event.created_at), state: current.state },
             ...current.events,
-          ].slice(0, 10),
+          ].slice(0, 12),
         };
       }
 
@@ -295,24 +143,11 @@ const useEventStore = create<EventStore>((set) => ({
       const existingMessage = current.messages.find((message) => message.jobId === event.job_id);
       const nextMessages = existingMessage
         ? current.messages.map((message) =>
-            message.jobId === event.job_id
-              ? {
-                  ...message,
-                  text: `${message.text}${event.delta}`,
-                  streaming: !event.done,
-                }
-              : message,
+            message.jobId === event.job_id ? { ...message, text: `${message.text}${event.delta}`, streaming: !event.done } : message,
           )
         : [
             ...current.messages,
-            {
-              id: event.id,
-              author: "platt" as const,
-              text: event.delta,
-              jobId: event.job_id,
-              streaming: !event.done,
-              createdAt: event.created_at,
-            },
+            { id: event.id, author: "platt" as const, text: event.delta, jobId: event.job_id, streaming: !event.done, createdAt: event.created_at },
           ];
 
       return { seenBackendEventIds, messages: nextMessages };
@@ -332,15 +167,11 @@ function useBackendEvents() {
       setLastEvent(event);
     };
 
-    // The SSE stream only replays events after the seq carried in a resumed
-    // connection's Last-Event-ID, so hydrate history once up front here.
     const hydrateOnMount = async () => {
       const controller = new AbortController();
       const timer = window.setTimeout(() => controller.abort(), 5_000);
       try {
-        const response = await requestJson<{ events: unknown[] }>("/events/recent?limit=100", {
-          signal: controller.signal,
-        });
+        const response = await requestJson<{ events: unknown[] }>("/events/recent?limit=100", { signal: controller.signal });
         for (const value of response.events) {
           const event = parseBackendEvent(value);
           if (event && !closed) deliver(event);
@@ -412,299 +243,16 @@ async function postJson<T>(path: string, body?: unknown): Promise<T> {
   });
 }
 
-function PlattCharacter({ state, speech }: { state: PlattState; speech: string }) {
-  const [bubbleVisible, setBubbleVisible] = React.useState(false);
-  const hasSpoken = React.useRef(false);
-
-  React.useEffect(() => {
-    if (state === "talking" && speech) {
-      hasSpoken.current = true;
-      setBubbleVisible(true);
-      return undefined;
-    }
-    if (!hasSpoken.current) return undefined;
-    const hideTimer = window.setTimeout(() => setBubbleVisible(false), 4000);
-    return () => window.clearTimeout(hideTimer);
-  }, [speech, state]);
-
-  return (
-    <div className={`plattCharacter ${state}`} aria-label={`Platt is ${stateLabels[state].toLowerCase()}`}>
-      <div className="confetti" aria-hidden="true"><i /><i /><i /><i /><i /></div>
-      {bubbleVisible ? <div className="plattBubble">{speech.slice(-220)}</div> : null}
-      {state === "thinking" ? <div className="thoughtDots" aria-label="Platt is thinking"><b /> <b /> <b /></div> : null}
-      <div className="plattShadow" aria-hidden="true" />
-      <div className="plattBody" aria-hidden="true">
-        <div className="plattHead"><span className="ear left" /><span className="ear right" /><div className="hair" /><div className="face"><span className="eye left" /><span className="eye right" /><span className="nose" /><span className="mouth" /></div></div>
-        <div className="plattNeck" /><div className="plattTorso"><span className="shirt" /><span className="lapel left" /><span className="lapel right" /></div>
-        <div className="plattArm left"><span className="hand" /></div><div className="plattArm right"><span className="hand" /></div>
-        <div className="plattLeg left"><span className="shoe" /></div><div className="plattLeg right"><span className="shoe" /></div>
-      </div>
-    </div>
-  );
-}
-
-function OfficeScene({ state, speech }: { state: PlattState; speech: string }) {
-  return <div className={`officeScene ${state}`}>
-    <div className="wallBoard" aria-label="Miniature Kanban board"><span>PLATT BOARD</span><div><i /> <i /> <i /></div></div>
-    <div className="serverRack" aria-label="Server rack"><i /><i /><i /><i /></div>
-    <div className="desk"><div className="monitor"><span>PLATT</span><i /></div><div className="keyboard" /><div className="deskLeg left" /><div className="deskLeg right" /></div>
-    <div className="plant"><i /><i /><i /><b /></div><div className="pebble" aria-hidden="true" /><PlattCharacter state={state} speech={speech} /><div className="floorGrid" aria-hidden="true" />
-  </div>;
-}
-
-function Stage({
-  readiness,
-  lastEvent,
-  activePanel,
-  onSelectPanel,
-  onClosePanel,
-}: {
-  readiness: BackendReadiness;
-  lastEvent: BackendEvent | null;
-  activePanel: RailPanel | null;
-  onSelectPanel: (panel: RailPanel) => void;
-  onClosePanel: (panel: RailPanel) => void;
-}) {
-  const state = useEventStore((store) => store.state);
-  const connection = useEventStore((store) => store.connection);
-  const messages = useEventStore((store) => store.messages);
-  const provisionEvents = useProvisionStore((store) => store.events);
-  const provisionLabel = provisionStatusLabel(deriveProvisionSteps(provisionEvents));
-  const [renderer, useFallback] = useStageRenderer();
-  const latestPlattEntry = [...messages].reverse().find((message) => message.author === "platt") ?? null;
-  const latestPlattMessage = latestPlattEntry?.text ?? "";
-  const muted = useVoiceMuteStore((store) => store.muted);
-  useSpeechSynthesis({ state, muted, text: latestPlattMessage, messageId: latestPlattEntry?.id ?? null });
-
-  return (
-    <section className="stage" aria-label="Platt office stage">
-      <div className="stageHeader">
-        <span className={`connectionBadge ${connection}`}>{connection}</span>
-        <span className={`readinessBadge ${readiness}`} aria-live="polite">backend {readiness}</span>
-        <span className={`stageRendererBadge ${renderer}`}>{renderer === "three" ? "3D scene" : "2D fallback"}</span>
-        <MuteToggle />
-      </div>
-      <span className="sandboxBadge" aria-label="Sandbox environment">Sandbox</span>
-      <ProvisionTimeline lastEvent={lastEvent} />
-      {renderer === "three" ? (
-        <ThreeOfficeSceneBoundary fallback={<OfficeScene state={state} speech={latestPlattMessage} />} onFailure={useFallback}>
-          <React.Suspense fallback={<OfficeScene state={state} speech={latestPlattMessage} />}>
-            <ThreeOfficeScene state={state} speech={latestPlattMessage} onContextLost={useFallback} />
-          </React.Suspense>
-        </ThreeOfficeSceneBoundary>
-      ) : <OfficeScene state={state} speech={latestPlattMessage} />}
-      <div className="stageFooter">
-        <StatusChip state={state} provisionLabel={provisionLabel} />
-        <span>Platt · embodied DevOps agent · Live event projection</span>
-      </div>
-      <IconRail active={activePanel} onSelect={onSelectPanel} />
-      <KanbanPanel open={activePanel === "kanban"} onClose={() => onClosePanel("kanban")} lastEvent={lastEvent} />
-      <DashboardPanel open={activePanel === "dashboard"} onClose={() => onClosePanel("dashboard")} />
-    </section>
-  );
-}
-
-function StatusChip({ state, provisionLabel }: { state: PlattState; provisionLabel: string | null }) {
-  return (
-    <div className={`statusChip ${state}`} aria-live="polite">
-      <span className="statusDot" />
-      {stateLabels[state]}
-      {provisionLabel ? <span className="provisionLabel">· {provisionLabel}</span> : null}
-    </div>
-  );
-}
-
-function repositoryName(path: string) {
-  const segments = path.split("/").filter(Boolean);
-  return segments[segments.length - 1] ?? path;
-}
-
-function formatRepositoryToolResult(result: unknown) {
-  const output = JSON.stringify(result, null, 2);
-  return output.length > 1_600 ? `${output.slice(0, 1_600)}\n… truncated in preview` : output;
-}
-
-function RepositoryContext({
-  record,
-  onRecordChange,
-  onPlanJobAccepted,
-}: {
-  record: OnboardingRecord | null;
-  onRecordChange: (record: OnboardingRecord) => void;
-  onPlanJobAccepted: (jobId: string) => void;
-}) {
-  const [repositoryPath, setRepositoryPath] = React.useState("");
-  const [busy, setBusy] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const [plan, setPlan] = React.useState<RepositoryInspectionPlan | null>(null);
-  const [planJobId, setPlanJobId] = React.useState<string | null>(null);
-  const [planBusy, setPlanBusy] = React.useState(false);
-  const [planError, setPlanError] = React.useState<string | null>(null);
-  const [runningStepId, setRunningStepId] = React.useState<string | null>(null);
-  const [stepResults, setStepResults] = React.useState<Record<string, RepositoryToolResponse>>({});
-  const [stepError, setStepError] = React.useState<string | null>(null);
-  const modulePreview = record?.terraform_module_nodes.slice(0, 3).map((module) => module.path === "." ? "root" : module.path).join(", ");
-
-  const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const path = repositoryPath.trim();
-    if (!path || busy) return;
-
-    setBusy(true);
-    setError(null);
-    try {
-      const response = await postJson<OnboardingRecord>("/onboarding", { repository_path: path });
-      setPlan(null);
-      setPlanJobId(null);
-      setPlanError(null);
-      setStepResults({});
-      setStepError(null);
-      onRecordChange(response);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not onboard this repository.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const onPreparePlan = async () => {
-    if (!record || planBusy) return;
-
-    setPlanBusy(true);
-    setPlanError(null);
-    try {
-      const response = await postJson<RepositoryInspectionPlanResponse>(
-        `/onboarding/${encodeURIComponent(record.id)}/plans/repository-review`,
-      );
-      setPlan(response.plan);
-      setPlanJobId(response.job_id);
-      setStepResults({});
-      setStepError(null);
-      onPlanJobAccepted(response.job_id);
-    } catch (reason) {
-      setPlanError(reason instanceof Error ? reason.message : "Could not prepare this review plan.");
-    } finally {
-      setPlanBusy(false);
-    }
-  };
-
-  const onRunPlanStep = async (step: RepositoryInspectionStep) => {
-    if (!record || !planJobId || runningStepId) return;
-
-    setRunningStepId(step.id);
-    setStepError(null);
-    try {
-      const response = await postJson<RepositoryToolResponse>(
-        `/onboarding/${encodeURIComponent(record.id)}/plans/repository-review/${encodeURIComponent(planJobId)}/steps/${encodeURIComponent(step.id)}`,
-      );
-      setStepResults((current) => ({ ...current, [step.id]: response }));
-    } catch (reason) {
-      setStepError(reason instanceof Error ? reason.message : "Could not run this read-only step.");
-    } finally {
-      setRunningStepId(null);
-    }
-  };
-
-  return (
-    <section className="auditSection repositoryContext" aria-labelledby="repository-heading">
-      <header className="auditHeader">
-        <div>
-          <p className="eyebrow">Repository context</p>
-          <h1 id="repository-heading">Onboard a local repo</h1>
-        </div>
-        <span className={`repositoryStatus ${record ? "ready" : ""}`}>{record ? "Ready" : "Local only"}</span>
-      </header>
-      <p className="repositoryIntro">Index a checked-out repository that is inside the backend’s configured onboarding root. Platt only reads its bounded inventory.</p>
-      <form className="onboardingForm" onSubmit={onSubmit}>
-        <label htmlFor="repository-path">Repository path</label>
-        <div>
-          <input
-            id="repository-path"
-            value={repositoryPath}
-            disabled={busy}
-            onChange={(event) => setRepositoryPath(event.target.value)}
-            placeholder="/workspace/checked-out-repository"
-          />
-          <button type="submit" disabled={busy || !repositoryPath.trim()}>{busy ? "Indexing" : "Onboard"}</button>
-        </div>
-      </form>
-      {error ? <div className="repositoryError" role="alert">{error}</div> : null}
-      {record ? (
-        <div className="repositorySummary" aria-live="polite">
-          <strong title={record.repository_path}>{repositoryName(record.repository_path)}</strong>
-          <span>{record.repository_path}</span>
-          <dl>
-            <div><dt>Files</dt><dd>{record.files.length}</dd></div>
-            <div><dt>Modules</dt><dd>{record.terraform_module_nodes.length}</dd></div>
-            <div><dt>Pipelines</dt><dd>{record.pipeline_yamls.length}</dd></div>
-          </dl>
-          {modulePreview ? <p>Graph: {modulePreview}{record.terraform_module_nodes.length > 3 ? "…" : ""}</p> : <p>No Terraform module graph found.</p>}
-          <button className="planButton" type="button" onClick={() => void onPreparePlan()} disabled={planBusy}>
-            {planBusy ? "Preparing plan" : "Prepare review plan"}
-          </button>
-          {planError ? <div className="repositoryError" role="alert">{planError}</div> : null}
-          {plan ? (
-            <section className="reviewPlan" aria-labelledby="review-plan-heading">
-              <header>
-                <div>
-                  <p className="eyebrow">Read-only review</p>
-                  <h2 id="review-plan-heading">Proposed tool plan</h2>
-                </div>
-                <span>{plan.steps.length} steps</span>
-              </header>
-              <p>{plan.summary}</p>
-              <ol>
-                {plan.steps.map((step) => (
-                  <li key={step.id}>
-                    <strong>{step.title}</strong>
-                    <span><b>{step.tool}</b> · {Object.entries(step.arguments).map(([name, value]) => `${name}: ${value}`).join(", ")}</span>
-                    <small>{step.expected_output}</small>
-                    <button className="planStepButton" type="button" onClick={() => void onRunPlanStep(step)} disabled={Boolean(runningStepId)}>
-                      {runningStepId === step.id ? "Running read-only step" : `Run ${step.tool}`}
-                    </button>
-                    {stepResults[step.id] ? <pre>{formatRepositoryToolResult(stepResults[step.id].result)}</pre> : null}
-                  </li>
-                ))}
-              </ol>
-              {stepError ? <div className="repositoryError" role="alert">{stepError}</div> : null}
-              <footer>No step runs automatically. Each explicit run is read-only and recorded against this plan job.</footer>
-            </section>
-          ) : null}
-        </div>
-      ) : null}
-    </section>
-  );
-}
-
 const initialAuditState: AsyncState<AuditEntry[]> = { data: [], loading: true, error: null };
 const initialJobState: AsyncState<Job | null> = { data: null, loading: false, error: null };
 const initialJobEventsState: AsyncState<PersistedJobEvent[]> = { data: [], loading: false, error: null };
 
-function formatDateTime(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "Unknown time" : date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
-}
-
-function AuditInspector({
-  selectedJobId,
-  onSelectJob,
-  lastEvent,
-  onboardingRecord,
-  onOnboardingRecordChange,
-  onPlanJobAccepted,
-  highlighted,
-}: {
-  selectedJobId: string | null;
-  onSelectJob: (jobId: string) => void;
-  lastEvent: BackendEvent | null;
-  onboardingRecord: OnboardingRecord | null;
-  onOnboardingRecordChange: (record: OnboardingRecord) => void;
-  onPlanJobAccepted: (jobId: string) => void;
-  highlighted: boolean;
-}) {
+/** Shared audit-trail + job-inspector fetch state, consumed by both the Overview alerts feed and the Audit/Jobs nav pages. */
+function useAuditAndJobInspector(lastEvent: BackendEvent | null) {
   const [audit, setAudit] = React.useState<AsyncState<AuditEntry[]>>(initialAuditState);
   const [job, setJob] = React.useState<AsyncState<Job | null>>(initialJobState);
   const [jobEvents, setJobEvents] = React.useState<AsyncState<PersistedJobEvent[]>>(initialJobEventsState);
+  const [selectedJobId, setSelectedJobId] = React.useState<string | null>(null);
   const auditRequestId = React.useRef(0);
   const jobRequestId = React.useRef(0);
 
@@ -726,8 +274,8 @@ function AuditInspector({
     setJob({ data: null, loading: true, error: null });
     setJobEvents({ data: [], loading: true, error: null });
     const [jobResult, eventsResult] = await Promise.allSettled([
-        requestJson<Job>(`/jobs/${encodeURIComponent(jobId)}`),
-        requestJson<{ events: PersistedJobEvent[] }>(`/jobs/${encodeURIComponent(jobId)}/events`),
+      requestJson<Job>(`/jobs/${encodeURIComponent(jobId)}`),
+      requestJson<{ events: PersistedJobEvent[] }>(`/jobs/${encodeURIComponent(jobId)}/events`),
     ]);
     if (requestId !== jobRequestId.current) return;
 
@@ -742,6 +290,8 @@ function AuditInspector({
       setJobEvents({ data: [], loading: false, error: "Could not load this job's events." });
     }
   }, []);
+
+  const selectJob = React.useCallback((jobId: string) => setSelectedJobId(jobId), []);
 
   React.useEffect(() => {
     void refreshAudit(true);
@@ -763,308 +313,153 @@ function AuditInspector({
       void refreshAudit();
     }
     if (lastEvent.type === "job_created") {
-      if (!selectedJobId && lastEvent.job_id) onSelectJob(lastEvent.job_id);
+      if (!selectedJobId && lastEvent.job_id) selectJob(lastEvent.job_id);
     }
     if (!("job_id" in lastEvent) || lastEvent.job_id !== selectedJobId || !selectedJobId) return;
     const delay = lastEvent.type === "chat_delta" ? 300 : 0;
     const refreshTimer = window.setTimeout(() => void refreshJob(selectedJobId), delay);
     return () => window.clearTimeout(refreshTimer);
-  }, [lastEvent, onSelectJob, refreshAudit, refreshJob, selectedJobId]);
+  }, [lastEvent, refreshAudit, refreshJob, selectJob, selectedJobId]);
 
-  return (
-    <aside className={`auditPanel ${highlighted ? "highlighted" : ""}`} aria-label="Audit and job inspector">
-      <RepositoryContext record={onboardingRecord} onRecordChange={onOnboardingRecordChange} onPlanJobAccepted={onPlanJobAccepted} />
-      <section className="auditSection auditListSection" aria-labelledby="audit-heading">
-        <header className="auditHeader">
-          <div>
-            <p className="eyebrow">Observability</p>
-            <h1 id="audit-heading">Audit trail</h1>
-          </div>
-          <button
-            className="iconButton"
-            type="button"
-            onClick={() => void refreshAudit(true)}
-            disabled={audit.loading}
-            aria-label="Refresh audit trail"
-            title="Refresh audit trail"
-          >
-            <RefreshCw size={15} className={audit.loading ? "spinning" : undefined} aria-hidden="true" />
-          </button>
-        </header>
-
-        {audit.error ? (
-          <LoadError message={audit.error} onRetry={() => void refreshAudit(true)} />
-        ) : audit.loading && audit.data.length === 0 ? (
-          <AuditSkeleton />
-        ) : audit.data.length === 0 ? (
-          <EmptyState title="No audit entries yet" detail="New jobs and tool activity will appear here." />
-        ) : (
-          <ol className="auditList">
-            {audit.data.map((entry) => {
-              const selectable = Boolean(entry.job_id);
-              return (
-                <li key={entry.id}>
-                  <button
-                    className={`auditItem ${selectedJobId === entry.job_id ? "selected" : ""}`}
-                    type="button"
-                    onClick={() => entry.job_id && onSelectJob(entry.job_id)}
-                    disabled={!selectable}
-                    aria-current={selectedJobId === entry.job_id ? "true" : undefined}
-                  >
-                    <span className="auditItemTop"><strong>{entry.tool}</strong><time dateTime={entry.created_at}>{formatDateTime(entry.created_at)}</time></span>
-                    <span className="auditAction">{entry.action.replace(/_/g, " ")}</span>
-                    <span className="auditOutcome">{entry.outcome}</span>
-                    {selectable ? <ChevronRight size={15} aria-hidden="true" /> : null}
-                  </button>
-                </li>
-              );
-            })}
-          </ol>
-        )}
-      </section>
-
-      <section className="auditSection jobInspector" aria-labelledby="job-heading">
-        <header>
-          <div>
-            <p className="eyebrow">Selected job</p>
-            <h2 id="job-heading">Job inspector</h2>
-          </div>
-          {selectedJobId ? (
-            <button className="textButton" type="button" onClick={() => void refreshJob(selectedJobId)}>
-              Refresh
-            </button>
-          ) : null}
-        </header>
-
-        {!selectedJobId ? (
-          <EmptyState title="Select an audit entry" detail="Choose an entry associated with a job to inspect its request and event history." />
-        ) : job.loading ? (
-          <JobSkeleton />
-        ) : job.error ? (
-          <LoadError message={job.error} onRetry={() => void refreshJob(selectedJobId)} />
-        ) : job.data ? (
-          <>
-            <dl className="jobDetails">
-              <div><dt>Status</dt><dd className="jobStatus">{job.data.status}</dd></div>
-              <div><dt>Created</dt><dd>{formatDateTime(job.data.created_at)}</dd></div>
-              <div className="jobPrompt"><dt>Request</dt><dd>{job.data.prompt}</dd></div>
-              <div className="jobIdentifier"><dt>Job ID</dt><dd title={job.data.id}>{job.data.id}</dd></div>
-            </dl>
-
-            <div className="jobEventHeader"><h3>Event history</h3><span>{jobEvents.data.length}</span></div>
-            {jobEvents.loading ? (
-              <JobEventSkeleton />
-            ) : jobEvents.error ? (
-              <LoadError message={jobEvents.error} onRetry={() => void refreshJob(selectedJobId)} />
-            ) : jobEvents.data.length === 0 ? (
-              <EmptyState title="No saved events" detail="Events will be recorded as this job progresses." />
-            ) : (
-              <ol className="jobEventList">
-                {jobEvents.data.map((event) => {
-                  const description = describePersistedEvent(event);
-                  return (
-                    <li key={event.id}>
-                      <time dateTime={event.created_at}>{formatDateTime(event.created_at)}</time>
-                      <div><strong>{description.title}</strong><p>{description.detail}</p></div>
-                    </li>
-                  );
-                })}
-              </ol>
-            )}
-          </>
-        ) : null}
-      </section>
-    </aside>
-  );
+  return { audit, refreshAudit: () => void refreshAudit(true), job, jobEvents, selectedJobId, selectJob, refreshJob: () => selectedJobId && void refreshJob(selectedJobId) };
 }
 
-function EmptyState({ title, detail }: { title: string; detail: string }) {
-  return <div className="emptyState"><ClipboardList size={18} aria-hidden="true" /><strong>{title}</strong><p>{detail}</p></div>;
-}
-
-function LoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return <div className="loadError" role="alert"><CircleAlert size={18} aria-hidden="true" /><p>{message}</p><button className="textButton" type="button" onClick={onRetry}>Try again</button></div>;
-}
-
-function AuditSkeleton() {
-  return <div className="skeletonStack" aria-label="Loading audit entries"><span /><span /><span /></div>;
-}
-
-function JobSkeleton() {
-  return <div className="skeletonStack jobSkeleton" aria-label="Loading job details"><span /><span /><span /><span /></div>;
-}
-
-function JobEventSkeleton() {
-  return <div className="skeletonStack eventSkeleton" aria-label="Loading job events"><span /><span /></div>;
-}
-
-function PlanBlock({ entry, onToggle }: { entry: PlanEntry; onToggle: () => void }) {
-  return (
-    <div className="message platt planBlock" key={entry.id}>
-      <span>Platt · Plan</span>
-      <button
-        type="button"
-        className="planBlockToggle"
-        onClick={onToggle}
-        aria-expanded={!entry.collapsed}
-      >
-        {entry.collapsed ? <ChevronDown size={14} aria-hidden="true" /> : <ChevronUp size={14} aria-hidden="true" />}
-        {entry.collapsed ? "Show plan" : "Hide plan"}
-      </button>
-      {entry.collapsed ? null : <pre className="planBlockBody">{entry.summary}</pre>}
-    </div>
-  );
-}
-
-function ChatPanel({
-  onJobAccepted,
-  onboardingRecord,
-}: {
-  onJobAccepted: (jobId: string) => void;
-  onboardingRecord: OnboardingRecord | null;
-}) {
+function DashboardShell({ readiness, lastEvent }: { readiness: BackendReadiness; lastEvent: BackendEvent | null }) {
+  const state = useEventStore((store) => store.state);
+  const connection = useEventStore((store) => store.connection);
   const messages = useEventStore((store) => store.messages);
   const events = useEventStore((store) => store.events);
   const addOperatorMessage = useEventStore((store) => store.addOperatorMessage);
   const addLocalEvent = useEventStore((store) => store.addLocalEvent);
   const planEntries = useProvisionStore((store) => store.planEntries);
   const togglePlan = useProvisionStore((store) => store.togglePlan);
+  const provisionEvents = useProvisionStore((store) => store.events);
+  const applyProvisionEvent = useProvisionStore((store) => store.applyEvent);
+  const applyApprovalEvent = useApprovalStore((store) => store.applyEvent);
+  const applyKanbanEvent = useKanbanStore((store) => store.applyEvent);
+  const pendingApprovals = useApprovalStore((store) => store.entries.filter((entry) => entry.status === "pending").length);
+  const muted = useVoiceMuteStore((store) => store.muted);
+
+  const [activeNav, setActiveNav] = React.useState<NavKey>("overview");
+  const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
+  const [search, setSearch] = React.useState("");
+  const [onboardingRecord, setOnboardingRecord] = React.useState<OnboardingRecord | null>(null);
   const [draft, setDraft] = React.useState("");
-  const [busy, setBusy] = React.useState(false);
+  const [chatBusy, setChatBusy] = React.useState(false);
 
-  const timeline: Array<{ key: string; createdAt: string; kind: "message" | "plan"; message?: ChatMessage; plan?: PlanEntry }> = [
-    ...messages.map((message) => ({ key: `m-${message.id}`, createdAt: message.createdAt, kind: "message" as const, message })),
-    ...planEntries.map((plan) => ({ key: `p-${plan.id}`, createdAt: plan.createdAt, kind: "plan" as const, plan })),
-  ].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const { audit, refreshAudit, job, jobEvents, selectedJobId, selectJob, refreshJob } = useAuditAndJobInspector(lastEvent);
 
-  const sendMessage = async (rawText: string) => {
-    const text = rawText.trim();
-    if (!text || busy) return;
+  React.useEffect(() => {
+    if (!lastEvent) return;
+    applyProvisionEvent(lastEvent);
+    applyApprovalEvent(lastEvent);
+    applyKanbanEvent(lastEvent);
+  }, [applyApprovalEvent, applyKanbanEvent, applyProvisionEvent, lastEvent]);
 
-    setBusy(true);
-    addOperatorMessage(text);
-    setDraft("");
+  const latestPlattEntry = [...messages].reverse().find((message) => message.author === "platt") ?? null;
+  const latestPlattMessage = latestPlattEntry?.text ?? "";
+  useSpeechSynthesis({ state, muted, text: latestPlattMessage, messageId: latestPlattEntry?.id ?? null });
 
-    try {
-      const path = onboardingRecord ? `/onboarding/${encodeURIComponent(onboardingRecord.id)}/chat` : "/chat";
-      const response = await postJson<{ job_id: string }>(path, { prompt: text });
-      onJobAccepted(response.job_id);
-    } catch {
-      addLocalEvent("concerned", "Backend chat request failed");
-    } finally {
-      setBusy(false);
-    }
-  };
+  const provisionLabel = provisionStatusLabel(deriveProvisionSteps(provisionEvents));
 
-  const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+  const sendMessage = React.useCallback(
+    async (rawText: string) => {
+      const text = rawText.trim();
+      if (!text || chatBusy) return;
+
+      setChatBusy(true);
+      addOperatorMessage(text);
+      setDraft("");
+
+      try {
+        const path = onboardingRecord ? `/onboarding/${encodeURIComponent(onboardingRecord.id)}/chat` : "/chat";
+        const response = await postJson<{ job_id: string }>(path, { prompt: text });
+        selectJob(response.job_id);
+      } catch {
+        addLocalEvent("concerned", "Backend chat request failed");
+      } finally {
+        setChatBusy(false);
+      }
+    },
+    [addLocalEvent, addOperatorMessage, chatBusy, onboardingRecord, selectJob],
+  );
+
+  const onChatSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    await sendMessage(draft);
+    void sendMessage(draft);
   };
 
-  const runStateCycle = async () => {
+  const runStateCycle = React.useCallback(async () => {
     try {
       await postJson("/dev/state-cycle");
     } catch {
       addLocalEvent("concerned", "Backend state cycle request failed");
     }
-  };
+  }, [addLocalEvent]);
 
   return (
-    <aside className="chatPanel" aria-label="Chat and event timeline">
-      <div className="panelSection messages">
-        <header>
-          <div>
-            <h1>Platt</h1>
-            <p>{onboardingRecord ? `Scoped to ${repositoryName(onboardingRecord.repository_path)}` : "Phase 1 event contract"}</p>
-          </div>
-          <button className="cycleButton" type="button" onClick={runStateCycle} title="Run backend state cycle">
-            <Play size={16} aria-hidden="true" />
-          </button>
-        </header>
-        <div className="messageList">
-          {timeline.map((entry) =>
-            entry.kind === "plan" && entry.plan ? (
-              <PlanBlock key={entry.key} entry={entry.plan} onToggle={() => togglePlan(entry.plan!.id)} />
-            ) : entry.message ? (
-              <div className={`message ${entry.message.author}`} key={entry.key}>
-                <span>{entry.message.author === "platt" ? "Platt" : "Operator"}</span>
-                <p>
-                  {entry.message.text}
-                  {entry.message.streaming ? <b className="cursor">|</b> : null}
-                </p>
-              </div>
-            ) : null,
+    <div className="dashboardShell">
+      <Sidebar active={activeNav} onSelect={setActiveNav} collapsed={sidebarCollapsed} onToggleCollapsed={() => setSidebarCollapsed((c) => !c)} pendingApprovals={pendingApprovals} />
+      <div className="dashboardMain">
+        <TopBar title={navTitles[activeNav]} plattState={state} alertCount={audit.data.length} search={search} onSearchChange={setSearch} />
+        <div className="stagePillRow">
+          <span className={`readinessBadge ${readiness}`} aria-live="polite">backend {readiness}</span>
+          <span className={`connectionBadge ${connection}`}>{connection}</span>
+          {provisionLabel ? <span className="provisionLabel">· {provisionLabel}</span> : null}
+          <span className="sandboxBadge" aria-label="Sandbox environment">Sandbox</span>
+        </div>
+        <main className="dashboardContent" aria-label={navTitles[activeNav]}>
+          {activeNav === "overview" ? (
+            <OverviewView apiBaseUrl={apiBaseUrl} lastEvent={lastEvent} audit={audit.data} onSelectJob={selectJob} events={events} connection={connection} />
+          ) : activeNav === "jobs" ? (
+            <JobsView
+              messages={messages}
+              planEntries={planEntries}
+              onTogglePlan={togglePlan}
+              draft={draft}
+              onDraftChange={setDraft}
+              busy={chatBusy}
+              onSubmit={onChatSubmit}
+              onAutoSend={sendMessage}
+              onStateCycle={() => void runStateCycle()}
+              selectedJobId={selectedJobId}
+              job={job}
+              jobEvents={jobEvents}
+              onRefreshJob={refreshJob}
+            />
+          ) : activeNav === "provisioning" ? (
+            <ProvisioningView lastEvent={lastEvent} onboardingRecord={onboardingRecord} onOnboardingRecordChange={setOnboardingRecord} onPlanJobAccepted={selectJob} postJson={postJson} />
+          ) : activeNav === "pipelines" ? (
+            <PipelinesView />
+          ) : activeNav === "moduleGraph" ? (
+            <div className="moduleGraphViewGrid"><ModuleGraphCard tall /></div>
+          ) : activeNav === "boards" ? (
+            <div className="boardsViewGrid"><BoardsBoard lastEvent={lastEvent} /></div>
+          ) : activeNav === "audit" ? (
+            <AuditView audit={audit} onRefreshAudit={refreshAudit} selectedJobId={selectedJobId} onSelectJob={selectJob} job={job} jobEvents={jobEvents} onRefreshJob={refreshJob} />
+          ) : activeNav === "approvals" ? (
+            <ApprovalsView apiBaseUrl={apiBaseUrl} lastEvent={lastEvent} />
+          ) : (
+            <SettingsView apiBaseUrl={apiBaseUrl} readiness={readiness} />
           )}
-        </div>
+        </main>
       </div>
-
-      <div className="panelSection events">
-        <h2>Event Store</h2>
-        <ol>
-          {events.map((event) => (
-            <li key={event.id}>
-              <span>{event.timestamp}</span>
-              <strong>{stateLabels[event.state]}</strong>
-              <p>{event.label}</p>
-            </li>
-          ))}
-        </ol>
+      <div className="plattDeskDock" aria-label="Platt desk widget">
+        <DeskWidgetBoundary>
+          <React.Suspense fallback={null}>
+            <PlattDeskWidget state={state} speech={latestPlattMessage} />
+          </React.Suspense>
+        </DeskWidgetBoundary>
       </div>
-
-      <form className="composer" onSubmit={onSubmit}>
-        <label htmlFor="chat-input">{onboardingRecord ? "Ask about this repository" : "Message"}</label>
-        <div>
-          <input
-            id="chat-input"
-            value={draft}
-            disabled={busy}
-            onChange={(event) => setDraft(event.target.value)}
-            placeholder={onboardingRecord ? "Send through repository-aware chat" : "Send through backend /chat"}
-          />
-          <MicButton disabled={busy} getDraft={() => draft} onDraftChange={setDraft} onAutoSend={sendMessage} />
-          <button type="submit" aria-label="Send message" title="Send message" disabled={busy}>
-            <SendHorizonal size={18} aria-hidden="true" />
-          </button>
-        </div>
-      </form>
-    </aside>
+    </div>
   );
 }
 
 function ConnectedApp() {
   const lastEvent = useBackendEvents();
   const readiness = useBackendReadiness();
-  const [selectedJobId, setSelectedJobId] = React.useState<string | null>(null);
-  const [onboardingRecord, setOnboardingRecord] = React.useState<OnboardingRecord | null>(null);
-  const [activePanel, setActivePanel] = React.useState<RailPanel | null>(null);
-  const selectJob = React.useCallback((jobId: string) => setSelectedJobId(jobId), []);
-  const selectPanel = React.useCallback((panel: RailPanel) => setActivePanel((current) => toggleActivePanel(current, panel)), []);
-  const closePanel = React.useCallback((panel: RailPanel) => setActivePanel((current) => closeActivePanel(current, panel)), []);
 
-  return (
-    <main className="appShell">
-      <AuditInspector
-        selectedJobId={selectedJobId}
-        onSelectJob={selectJob}
-        lastEvent={lastEvent}
-        onboardingRecord={onboardingRecord}
-        onOnboardingRecordChange={setOnboardingRecord}
-        onPlanJobAccepted={selectJob}
-        highlighted={activePanel === "audit"}
-      />
-      <Stage
-        readiness={readiness}
-        lastEvent={lastEvent}
-        activePanel={activePanel}
-        onSelectPanel={selectPanel}
-        onClosePanel={closePanel}
-      />
-      <div className="chatColumn">
-        <ApprovalGate apiBaseUrl={apiBaseUrl} lastEvent={lastEvent} />
-        <ChatPanel onJobAccepted={selectJob} onboardingRecord={onboardingRecord} />
-      </div>
-    </main>
-  );
+  return <DashboardShell readiness={readiness} lastEvent={lastEvent} />;
 }
 
 function BackendConfigurationRequired({ configuration }: { configuration: BackendConfiguration }) {
@@ -1082,11 +477,7 @@ function BackendConfigurationRequired({ configuration }: { configuration: Backen
 }
 
 function App() {
-  return backendConfiguration.isConfigured ? (
-    <ConnectedApp />
-  ) : (
-    <BackendConfigurationRequired configuration={backendConfiguration} />
-  );
+  return backendConfiguration.isConfigured ? <ConnectedApp /> : <BackendConfigurationRequired configuration={backendConfiguration} />;
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
