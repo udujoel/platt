@@ -214,6 +214,14 @@ class AzdoClient:
         url = f"git/repositories/{repository_id}/pullrequests/{pull_request_id}"
         return await self._request("GET", url)
 
+    async def list_pull_requests(
+        self, repository_id: str, *, status: str = "active", top: int = 20
+    ) -> dict[str, Any]:
+        url = f"git/repositories/{repository_id}/pullrequests"
+        return await self._request(
+            "GET", url, params={"searchCriteria.status": status, "$top": top}
+        )
+
     async def comment_pull_request(
         self, repository_id: str, pull_request_id: int, *, comment: str
     ) -> dict[str, Any]:

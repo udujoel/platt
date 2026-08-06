@@ -109,6 +109,28 @@ class Persistence:
                 {"status": status, "id": str(job_id)},
             )
 
+    def list_recent_jobs(self, limit: int) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                text(
+                    """
+                    select id, prompt, status, onboarding_id, created_at, updated_at
+                    from jobs
+                    order by created_at desc
+                    limit :limit
+                    """
+                ),
+                {"limit": limit},
+            ).mappings().all()
+        return [dict(row) for row in rows]
+
+    def count_jobs_by_status(self) -> dict[str, int]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                text("select status, count(*) as n from jobs group by status")
+            ).all()
+        return {row[0]: int(row[1]) for row in rows}
+
     def record_event(self, event: Event) -> None:
         payload = event.model_dump_json()
         job_id = getattr(event, "job_id", None)
@@ -353,6 +375,13 @@ class Persistence:
             ).mappings().first()
         return dict(row) if row else None
 
+    def count_pending_approvals(self) -> int:
+        with self._connect() as connection:
+            row = connection.execute(
+                text("select count(*) from approvals where status = 'pending'")
+            ).first()
+        return int(row[0]) if row else 0
+
     def save_onboarding_record(self, record: OnboardingRecord) -> OnboardingRecord:
         with self._begin() as connection:
             connection.execute(
@@ -380,3 +409,12 @@ class Persistence:
         if row is None:
             raise OnboardingNotFoundError(str(onboarding_id))
         return OnboardingRecord.model_validate(json.loads(row[0]))
+
+    def get_latest_onboarding_record(self) -> OnboardingRecord | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                text(
+                    "select record_json from onboarding_records order by created_at desc limit 1"
+                ),
+            ).first()
+        return OnboardingRecord.model_validate(json.loads(row[0])) if row else None

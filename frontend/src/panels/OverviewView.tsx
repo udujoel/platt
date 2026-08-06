@@ -22,7 +22,7 @@ import {
   versionsBehindCount,
 } from "./dashboard-metrics";
 import type { AuditEntry } from "./dashboard-metrics";
-import { seededDashboardData } from "./dashboard-data";
+import { useDashboardStore } from "./dashboard-store";
 import { useApprovalStore } from "./approval-store";
 import { useKanbanStore } from "./kanban-store";
 import type { BackendEvent } from "../backend-events";
@@ -44,9 +44,11 @@ export function OverviewView({
 }) {
   const workItems = useKanbanStore((store) => store.items);
   const approvals = useApprovalStore((store) => store.entries);
-  const { pipelines, openPullRequests, versions } = seededDashboardData;
+  const pipelines = useDashboardStore((store) => store.pipelines);
+  const openPullRequests = useDashboardStore((store) => store.openPullRequests);
+  const versions = useDashboardStore((store) => store.versions);
 
-  const passRate = overallPassRate(pipelines);
+  const passRate = overallPassRate(pipelines.value);
   const activityPoints = cumulativeActivity(audit);
   const runsPoints = auditRunsByDay(audit);
   const outcomeSlices = outcomeBreakdown(audit);
@@ -55,11 +57,36 @@ export function OverviewView({
     <div className="overviewGrid">
       <div className="kpiRow">
         <KpiTile label="Active jobs" value={String(activeWorkItemsCount(workItems))} icon={Activity} tone="good" detail="Boards: Doing" />
-        <KpiTile label="Open PRs" value={String(openPullRequests.length)} icon={GitPullRequest} tone="neutral" seeded />
-        <KpiTile label="Pipeline pass-rate" value={`${passRate}%`} icon={TrendingUp} tone={passRate >= 80 ? "good" : passRate >= 55 ? "warning" : "critical"} seeded />
-        <KpiTile label="Version posture" value={versionPostureLabel(versions)} icon={GitBranch} tone={versionsBehindCount(versions) === 0 ? "good" : "warning"} seeded />
+        <KpiTile
+          label="Open PRs"
+          value={String(openPullRequests.value.length)}
+          icon={GitPullRequest}
+          tone="neutral"
+          seeded={openPullRequests.source === "unavailable"}
+        />
+        <KpiTile
+          label="Pipeline pass-rate"
+          value={`${passRate}%`}
+          icon={TrendingUp}
+          tone={passRate >= 80 ? "good" : passRate >= 55 ? "warning" : "critical"}
+          seeded={pipelines.source === "unavailable"}
+        />
+        <KpiTile
+          label="Version posture"
+          value={versionPostureLabel(versions.value)}
+          icon={GitBranch}
+          tone={versionsBehindCount(versions.value) === 0 ? "good" : "warning"}
+          seeded={versions.source === "unavailable"}
+        />
         <KpiTile label="Pending approvals" value={String(pendingApprovalsCount(approvals))} icon={ShieldCheck} tone={pendingApprovalsCount(approvals) > 0 ? "warning" : "good"} />
-        <KpiTile label="Drift" value={String(versionsBehindCount(versions))} icon={Timer} tone={versionsBehindCount(versions) === 0 ? "good" : "warning"} detail="modules behind latest" seeded />
+        <KpiTile
+          label="Drift"
+          value={String(versionsBehindCount(versions.value))}
+          icon={Timer}
+          tone={versionsBehindCount(versions.value) === 0 ? "good" : "warning"}
+          detail="modules behind latest"
+          seeded={versions.source === "unavailable"}
+        />
       </div>
 
       <div className="overviewMainGrid">
