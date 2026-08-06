@@ -29,7 +29,11 @@ export function KpiTile({
       <p className="kpiTileValue">{value}</p>
       <div className="kpiTileFoot">
         {detail ? <span className="kpiTileDetail">{detail}</span> : null}
-        {seeded ? <span className="kpiTileSeeded">seeded</span> : null}
+        {seeded ? (
+          <span className="kpiTileSeeded" title="Not connected to Azure DevOps yet" aria-label="Seeded sample data — not connected to Azure DevOps yet">
+            seeded
+          </span>
+        ) : null}
       </div>
     </div>
   );

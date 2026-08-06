@@ -249,6 +249,27 @@ async def get_pr(
     )
 
 
+async def list_prs(
+    client: AzdoClient,
+    persistence: Persistence,
+    *,
+    repository_id: str,
+    status: str = "active",
+    job_id: UUID | None = None,
+    event_bus: EventBus | None = None,
+) -> dict[str, Any]:
+    return await _call(
+        client,
+        persistence,
+        event_bus=event_bus,
+        job_id=job_id,
+        action="list_prs",
+        request_fields={"repository_id": repository_id, "status": status},
+        result_summary=lambda r: f"count={len(r.get('value', []))}",
+        fn=lambda: client.list_pull_requests(repository_id, status=status),
+    )
+
+
 async def comment_pr(
     client: AzdoClient,
     persistence: Persistence,

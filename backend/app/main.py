@@ -9,9 +9,24 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.background_tasks import cancel_background_tasks
+from app.collectors import DashboardCache
 from app.event_bus import event_bus
 from app.persistence import Persistence
-from app.routers import approvals, audit, chat, dev, events, health, jobs, onboarding, provision, sse, version_bump, ws
+from app.routers import (
+    approvals,
+    audit,
+    chat,
+    dashboard,
+    dev,
+    events,
+    health,
+    jobs,
+    onboarding,
+    provision,
+    sse,
+    version_bump,
+    ws,
+)
 
 
 LOCAL_VITE_ORIGIN_REGEX = r"^http://(?:localhost|127\.0\.0\.1):517\d+$"
@@ -72,6 +87,7 @@ def create_app(
     app.state.provision_repository_id = os.environ.get("PLATT_PROVISION_REPOSITORY_ID", "")
     apply_pipeline_id = os.environ.get("PLATT_PROVISION_APPLY_PIPELINE_ID", "").strip()
     app.state.provision_apply_pipeline_id = int(apply_pipeline_id) if apply_pipeline_id else None
+    app.state.dashboard_cache = DashboardCache()
     app.add_middleware(
         CORSMiddleware,
         allow_origin_regex=origin_regex,
@@ -88,6 +104,7 @@ def create_app(
     app.include_router(audit.router)
     app.include_router(onboarding.router)
     app.include_router(approvals.router)
+    app.include_router(dashboard.router)
     app.include_router(provision.router)
     app.include_router(version_bump.router)
     app.include_router(ws.router)

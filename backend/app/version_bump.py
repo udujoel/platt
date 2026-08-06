@@ -153,6 +153,16 @@ def _version_bump_branch_name(job_id: UUID) -> str:
     return f"platt/version-bump-{job_id}"
 
 
+def get_current_azurerm_constraint(seed_infra_path: Path) -> str:
+    """The pinned azurerm constraint, for callers outside this module (e.g. the dashboard collector)."""
+    return _read_versions_file(seed_infra_path)[1]
+
+
+def azurerm_constraint_satisfies(version: str, constraint: str) -> bool:
+    """Public wrapper around the same pessimistic-constraint check the job uses."""
+    return _pessimistic_constraint_allows(version, constraint)
+
+
 # -- significance assessment ----------------------------------------------------------
 
 

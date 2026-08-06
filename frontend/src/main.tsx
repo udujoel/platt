@@ -31,6 +31,7 @@ import type { OnboardingRecord } from "./panels/RepositoryPanel";
 import { deriveProvisionSteps, provisionStatusLabel, useProvisionStore } from "./panels/provision-store";
 import { useApprovalStore } from "./panels/approval-store";
 import { useKanbanStore } from "./panels/kanban-store";
+import { DASHBOARD_REFRESH_INTERVAL_MS, useDashboardStore } from "./panels/dashboard-store";
 import { useVoiceMuteStore } from "./voice/mute-store";
 import { useSpeechSynthesis } from "./voice/use-speech-synthesis";
 
@@ -340,6 +341,13 @@ function DashboardShell({ readiness, lastEvent }: { readiness: BackendReadiness;
   const applyKanbanEvent = useKanbanStore((store) => store.applyEvent);
   const pendingApprovals = useApprovalStore((store) => store.entries.filter((entry) => entry.status === "pending").length);
   const muted = useVoiceMuteStore((store) => store.muted);
+  const refreshDashboard = useDashboardStore((store) => store.refresh);
+
+  React.useEffect(() => {
+    void refreshDashboard(apiBaseUrl);
+    const id = window.setInterval(() => void refreshDashboard(apiBaseUrl), DASHBOARD_REFRESH_INTERVAL_MS);
+    return () => window.clearInterval(id);
+  }, [refreshDashboard]);
 
   const [activeNav, setActiveNav] = React.useState<NavKey>("overview");
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
